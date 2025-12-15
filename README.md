@@ -23,7 +23,7 @@ The functions are available at `http://localhost:8888/.netlify/functions/*`, whi
 
 ### Deployment
 
-Deploy directly to Netlify—the provided `netlify.toml` installs root dependencies for the functions, builds the Vue app, and publishes `frontend/dist` while bundling the functions from `netlify/functions/`.
+Deploy directly to Netlify—the provided `netlify.toml` builds the Vue app and publishes `frontend/dist`, while bundling the functions from `netlify/functions/`.
 
 ## API
 
@@ -80,6 +80,6 @@ During development you can open the app at [http://localhost:5173](http://localh
 
 ### Deploy to Netlify
 
-Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm install && npm install --prefix frontend && npm run build --prefix frontend`, publish directory `frontend/dist`, functions in `netlify/functions`, and `included_files` to ship the `ffmpeg-static` binary).
+Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm install --prefix frontend && npm run build --prefix frontend`, publish directory `frontend/dist`, functions in `netlify/functions`).
 
 If you want to call an external backend instead of the bundled functions, set `VITE_API_BASE` in the Netlify UI.
