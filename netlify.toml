@@ -1,0 +1,18 @@
+[build]
+  publish = "frontend/dist"
+  command = "npm install && npm install --prefix frontend && npm run build --prefix frontend"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  included_files = ["node_modules/ffmpeg-static/**"]
+
+[[redirects]]
+  from = "/api/clip"
+  to = "/.netlify/functions/clip"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/health"
+  status = 200
