@@ -50,6 +50,7 @@ exports.handler = async (event) => {
     return jsonResponse(500, {
       error: 'Failed to render the clip.',
       detail: error.message,
+      logs: Array.isArray(error.ffmpegLog) && error.ffmpegLog.length ? error.ffmpegLog : undefined,
     });
   } finally {
     if (outputPath) {
