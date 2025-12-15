@@ -1,0 +1,29 @@
+{
+  "name": "auto-clip",
+  "version": "1.0.0",
+  "description": "Serverless functions to smart clip segments from YouTube URLs.",
+  "main": "src/clipper.js",
+  "scripts": {
+    "dev": "netlify dev --dir frontend --functions netlify/functions",
+    "test": "node --test"
+  },
+  "keywords": [
+    "youtube",
+    "ffmpeg",
+    "clips",
+    "serverless",
+    "netlify"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {}
+}
