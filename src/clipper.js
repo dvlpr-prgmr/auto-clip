@@ -43,7 +43,6 @@ async function renderClip(url, start, end) {
   await ensureOutputDir();
   const outputPath = path.join(clipOutputDir, `${randomUUID()}.mp4`);
   const duration = end - start;
-  const ffmpegLog = [];
   const videoStream = ytdl(url, {
     filter: 'audioandvideo',
     quality: 'highestvideo',
@@ -53,9 +52,7 @@ async function renderClip(url, start, end) {
     await new Promise((resolve, reject) => {
       const handleError = (error) => {
         videoStream.destroy();
-        const wrappedError = error instanceof Error ? error : new Error(String(error));
-        wrappedError.ffmpegLog = ffmpegLog.slice(-8);
-        reject(wrappedError);
+        reject(error);
       };
 
       videoStream.once('error', handleError);
@@ -65,13 +62,6 @@ async function renderClip(url, start, end) {
         .setDuration(duration)
         .outputOptions('-movflags', 'frag_keyframe+empty_moov')
         .format('mp4')
-        .on('stderr', (line) => {
-          const trimmed = (line || '').toString().trim();
-          if (!trimmed) return;
-
-          ffmpegLog.push(trimmed);
-          if (ffmpegLog.length > 20) ffmpegLog.shift();
-        })
         .save(outputPath)
         .once('error', handleError)
         .once('end', resolve);

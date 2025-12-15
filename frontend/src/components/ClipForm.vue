@@ -22,15 +22,11 @@ const isSubmitting = ref(false);
 const status = reactive({
   type: 'idle',
   message: '',
-  detail: '',
-  logs: [],
 });
 
 async function handleSubmit() {
   status.type = 'idle';
   status.message = '';
-  status.detail = '';
-  status.logs = [];
   isSubmitting.value = true;
 
   try {
@@ -47,23 +43,14 @@ async function handleSubmit() {
     });
 
     if (!response.ok) {
-      let errorMessage = 'Failed to generate clip.';
-      let detail = '';
-      let logs = [];
+      let detail = 'Failed to generate clip.';
       try {
         const errorPayload = await response.json();
-        errorMessage = errorPayload.error || errorMessage;
-        detail = errorPayload.detail || detail;
-        logs = Array.isArray(errorPayload.logs) ? errorPayload.logs : [];
+        detail = errorPayload.error || errorPayload.detail || detail;
       } catch (e) {
         // If parsing fails, fall back to generic message.
       }
-
-      status.type = 'error';
-      status.message = errorMessage;
-      status.detail = detail;
-      status.logs = logs;
-      return;
+      throw new Error(detail);
     }
 
     const blob = await response.blob();
@@ -76,13 +63,9 @@ async function handleSubmit() {
 
     status.type = 'success';
     status.message = 'Clip ready! The download should begin automatically.';
-    status.detail = '';
-    status.logs = [];
   } catch (error) {
     status.type = 'error';
     status.message = error.message || 'Unexpected error generating clip.';
-    status.detail = status.detail || '';
-    status.logs = Array.isArray(status.logs) ? status.logs : [];
   } finally {
     isSubmitting.value = false;
   }
@@ -163,16 +146,6 @@ async function handleSubmit() {
       <span v-else-if="status.type === 'error'" aria-hidden="true">⚠️</span>
       <span v-else aria-hidden="true">ℹ️</span>
       <span>{{ status.message }}</span>
-    </div>
-
-    <div v-if="status.type === 'error' && (status.detail || status.logs.length)" class="rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-50">
-      <p v-if="status.detail" class="mb-2 font-semibold">Detail: {{ status.detail }}</p>
-      <div v-if="status.logs.length" class="space-y-1">
-        <p class="font-semibold">Recent ffmpeg logs:</p>
-        <ul class="list-disc space-y-1 pl-4">
-          <li v-for="line in status.logs" :key="line" class="font-mono text-[11px]">{{ line }}</li>
-        </ul>
-      </div>
     </div>
   </div>
 </template>

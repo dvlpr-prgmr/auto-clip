@@ -1,11 +1,10 @@
 [build]
   publish = "frontend/dist"
-  command = "npm install && npm install --prefix frontend && npm run build --prefix frontend"
+  command = "npm install --prefix frontend && npm run build --prefix frontend"
 
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  included_files = ["node_modules/ffmpeg-static/**"]
 
 [[redirects]]
   from = "/api/clip"

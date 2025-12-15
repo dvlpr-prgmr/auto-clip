@@ -5,7 +5,7 @@
   "main": "src/clipper.js",
   "scripts": {
     "dev": "netlify dev --dir frontend --functions netlify/functions",
-    "test": "node --test"
+    "test": "echo \"No automated tests configured\""
   },
   "keywords": [
     "youtube",

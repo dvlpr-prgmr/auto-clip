@@ -23,18 +23,7 @@ The functions are available at `http://localhost:8888/.netlify/functions/*`, whi
 
 ### Deployment
 
-Deploy directly to Netlify—the provided `netlify.toml` installs root dependencies for the functions, builds the Vue app, and publishes `frontend/dist` while bundling the functions from `netlify/functions/`.
-
-### Testing
-
-Run the backend unit tests with the Node.js test runner:
-
-```bash
-npm test
-```
-
-If npm cannot download dependencies (for example, `ffmpeg-static` returning a `403 Forbidden` from the registry), resolve the
-network or proxy issue first and rerun `npm install` so the test runner can load the required modules.
+Deploy directly to Netlify—the provided `netlify.toml` builds the Vue app and publishes `frontend/dist`, while bundling the functions from `netlify/functions/`.
 
 ## API
 
@@ -58,8 +47,7 @@ Create an MP4 clip from a YouTube video.
 **Response**
 
 - On success, returns the clipped file as a download named `clip.mp4`.
-- On failure, returns a JSON error payload with a relevant status code. Errors include `error` and `detail` fields plus recent
-  ffmpeg log lines (when available) to help you debug rendering issues.
+- On failure, returns a JSON error payload with a relevant status code.
 
 ### `GET /health`
 Basic health check endpoint that returns `{ "status": "ok" }`.
@@ -92,6 +80,6 @@ During development you can open the app at [http://localhost:5173](http://localh
 
 ### Deploy to Netlify
 
-Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm install && npm install --prefix frontend && npm run build --prefix frontend`, publish directory `frontend/dist`, functions in `netlify/functions`, and `included_files` to ship the `ffmpeg-static` binary).
+Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm install --prefix frontend && npm run build --prefix frontend`, publish directory `frontend/dist`, functions in `netlify/functions`).
 
 If you want to call an external backend instead of the bundled functions, set `VITE_API_BASE` in the Netlify UI.
