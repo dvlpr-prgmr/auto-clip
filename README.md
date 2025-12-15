@@ -72,9 +72,11 @@ During development you can open the app at [http://localhost:5173](http://localh
 
 ### Deploy to Netlify
 
-Netlify is configured to build the frontend from `frontend/` via `netlify.toml`. To deploy:
+Netlify can host the **frontend** only. The clipping backend must run elsewhere (for example on a VM, container host, or PaaS) because it depends on `ffmpeg` and long-running HTTP requests that are not well suited to Netlify Functions.
+
+To deploy the frontend to Netlify:
 
 1. Create a new Netlify site pointing at this repository.
 2. In **Site settings → Build & deploy → Environment**, add `VITE_API_BASE` with your backend URL (for example, `https://api.example.com`).
 3. Use the default build settings from `netlify.toml` (base `frontend/`, command `npm run build`, publish directory `dist`).
-4. Trigger a deploy; Netlify will build the Vue app and serve it from its CDN.
+4. Trigger a deploy; Netlify will build the Vue app and serve it from its CDN while forwarding API calls to your separately hosted backend.
