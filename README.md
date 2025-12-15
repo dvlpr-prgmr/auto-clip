@@ -2,6 +2,10 @@
 
 A lightweight Node.js backend for creating short clips from YouTube URLs. The service downloads the provided video stream with [`ytdl-core`](https://github.com/fent/node-ytdl-core) and trims it with [`ffmpeg`](https://ffmpeg.org/) (using [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static) so no system install is required).
 
+> **Do I need to install ffmpeg?**
+>
+> No manual install is required for the default setup—the backend uses the `ffmpeg-static` package to ship a compatible ffmpeg binary. If you prefer using a system-level ffmpeg (for example, to leverage GPU acceleration or a different codec build), you can remove `ffmpeg-static` from `package.json` and ensure `ffmpeg` is available on the host `PATH`.
+
 ## Setup
 
 Network access to npm is required to install dependencies.
