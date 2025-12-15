@@ -1,8 +1,17 @@
 [build]
-  base = "frontend"
-  publish = "dist"
-  command = "npm run build"
+  publish = "frontend/dist"
+  command = "npm install --prefix frontend && npm run build --prefix frontend"
 
-[build.environment]
-  # Set VITE_API_BASE in the Netlify UI to point to your backend, e.g. https://api.example.com
-  NODE_VERSION = "18"
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/clip"
+  to = "/.netlify/functions/clip"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/health"
+  status = 200

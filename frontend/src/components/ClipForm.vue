@@ -3,8 +3,13 @@ import { computed, reactive, ref } from 'vue';
 
 const apiBase = computed(() => {
   const base = import.meta.env.VITE_API_BASE?.trim();
-  if (!base) return 'http://localhost:3000';
-  return base.endsWith('/') ? base.slice(0, -1) : base;
+  if (base) return base.endsWith('/') ? base.slice(0, -1) : base;
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  return 'http://localhost:8888'; // fallback for non-browser contexts
 });
 
 const form = reactive({
