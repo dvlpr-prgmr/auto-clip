@@ -69,3 +69,12 @@ VITE_API_BASE=https://your-backend-host
 ```
 
 During development you can open the app at [http://localhost:5173](http://localhost:5173).
+
+### Deploy to Netlify
+
+Netlify is configured to build the frontend from `frontend/` via `netlify.toml`. To deploy:
+
+1. Create a new Netlify site pointing at this repository.
+2. In **Site settings → Build & deploy → Environment**, add `VITE_API_BASE` with your backend URL (for example, `https://api.example.com`).
+3. Use the default build settings from `netlify.toml` (base `frontend/`, command `npm run build`, publish directory `dist`).
+4. Trigger a deploy; Netlify will build the Vue app and serve it from its CDN.
