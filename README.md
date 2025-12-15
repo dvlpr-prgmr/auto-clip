@@ -49,3 +49,23 @@ Basic health check endpoint that returns `{ "status": "ok" }`.
 
 - Temporary clip files are written to your system temp directory and removed after they are sent to the client.
 - Ensure the host running the service has sufficient disk space for the temporary clip and outbound connectivity to YouTube.
+
+## Frontend (Vue 3 + Vite + Tailwind)
+
+The `frontend/` directory contains a simple UI for submitting clip requests.
+
+### Setup and run
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The UI defaults to calling `http://localhost:3000/api/clip`. To point it at a different backend host, create a `.env.local` file in `frontend/` with:
+
+```
+VITE_API_BASE=https://your-backend-host
+```
+
+During development you can open the app at [http://localhost:5173](http://localhost:5173).
