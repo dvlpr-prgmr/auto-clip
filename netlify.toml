@@ -1,0 +1,17 @@
+[build]
+  publish = "frontend/dist"
+  command = "npm install --prefix frontend && npm run build --prefix frontend"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/clip"
+  to = "/.netlify/functions/clip"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/health"
+  status = 200
