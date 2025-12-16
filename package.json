@@ -2,10 +2,13 @@
   "name": "auto-clip",
   "version": "1.0.0",
   "description": "Serverless functions to smart clip segments from YouTube URLs.",
-  "main": "src/clipper.js",
+  "main": "netlify/lib/clipper.js",
   "scripts": {
-    "dev": "netlify dev --dir frontend --functions netlify/functions",
-    "test": "echo \"No automated tests configured\""
+    "dev": "netlify dev --dir . --functions netlify/functions",
+    "frontend:dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test"
   },
   "keywords": [
     "youtube",
@@ -23,7 +26,14 @@
   "dependencies": {
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.2",
+    "vue": "^3.4.21",
     "ytdl-core": "^4.11.5"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.2.11"
+  }
 }

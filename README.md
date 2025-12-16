@@ -1,6 +1,15 @@
 # auto-clip
 
-Serverless Netlify Functions for creating short clips from YouTube URLs, plus a Vue 3 frontend. The function downloads the requested YouTube stream with [`ytdl-core`](https://github.com/fent/node-ytdl-core) and trims it with [`ffmpeg`](https://ffmpeg.org/) using the bundled [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static) binary.
+Serverless Netlify Functions for creating short clips from YouTube URLs, plus a Vue 3 frontend (all in one project root). The function downloads the requested YouTube stream with [`ytdl-core`](https://github.com/fent/node-ytdl-core) and trims it with [`ffmpeg`](https://ffmpeg.org/) using the bundled [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static) binary.
+
+## Quick start
+
+- Prereq: Node 18+, npm, optional `netlify-cli` (`npm install -g netlify-cli`).
+- Install deps once from the root: `npm install`
+- Dev (Vite only): `npm run dev` → UI at `http://localhost:5173`
+- Full stack (functions + UI via proxy): `netlify dev --dir . --functions netlify/functions`
+- Build: `npm run build` (outputs `dist/`)
+- Tests: `npm test` (runs `node --test`)
 
 ## Backend (Netlify Functions)
 
@@ -12,18 +21,19 @@ npm install
 
 ### Local development
 
-Use the Netlify CLI to run the functions and frontend together:
+Use the Netlify CLI to run the functions and frontend together (both live in this root folder):
 
 ```bash
 npm install -g netlify-cli  # if you don't already have it
-netlify dev --dir frontend --functions netlify/functions
+npm install
+netlify dev --dir . --functions netlify/functions
 ```
 
-The functions are available at `http://localhost:8888/.netlify/functions/*`, while the redirect in `netlify.toml` exposes them at `/api/clip` and `/health`.
+The functions are available at `http://localhost:8888/.netlify/functions/*`, while the redirect in `netlify.toml` exposes them at `/api/clip` and `/health`. The Vite dev server serves the UI at `http://localhost:5173`.
 
 ### Deployment
 
-Deploy directly to Netlify—the provided `netlify.toml` builds the Vue app and publishes `frontend/dist`, while bundling the functions from `netlify/functions/`.
+Deploy directly to Netlify—the provided `netlify.toml` builds the Vue app and publishes `dist`, while bundling the functions from `netlify/functions/`.
 
 ## API
 
@@ -60,17 +70,16 @@ Basic health check endpoint that returns `{ "status": "ok" }`.
 
 ## Frontend (Vue 3 + Vite + Tailwind)
 
-The `frontend/` directory contains a simple UI for submitting clip requests.
+The UI lives directly in the root (`index.html`, `src/`, and Vite/Tailwind configs).
 
 ### Setup and run
 
 ```bash
-cd frontend
 npm install
-npm run dev
+npm run dev     # or: netlify dev --dir . --functions netlify/functions
 ```
 
-When served together with `netlify dev`, the UI calls the co-located functions at `/api/clip`. To target a different backend host, create a `.env.local` file in `frontend/` with:
+When served together with `netlify dev`, the UI calls the co-located functions at `/api/clip`. To target a different backend host, create a `.env.local` file in the project root with:
 
 ```
 VITE_API_BASE=https://your-backend-host
@@ -80,6 +89,6 @@ During development you can open the app at [http://localhost:5173](http://localh
 
 ### Deploy to Netlify
 
-Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm install --prefix frontend && npm run build --prefix frontend`, publish directory `frontend/dist`, functions in `netlify/functions`).
+Netlify hosts both the frontend and the serverless clipping backend. Use the default build settings from `netlify.toml` (build command `npm run build`, publish directory `dist`, functions in `netlify/functions`).
 
 If you want to call an external backend instead of the bundled functions, set `VITE_API_BASE` in the Netlify UI.

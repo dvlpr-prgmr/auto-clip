@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { validatePayload } = require('../src/clipper');
+const { validatePayload } = require('../netlify/lib/clipper');
 
 describe('validatePayload', () => {
   test('rejects missing payload', () => {

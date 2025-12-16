@@ -1,5 +1,5 @@
 const fs = require('fs/promises');
-const { validatePayload, renderClip } = require('../../src/clipper');
+const { validatePayload, renderClip } = require('../lib/clipper');
 
 function jsonResponse(statusCode, payload) {
   return {
