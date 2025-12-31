@@ -16,15 +16,16 @@
 - [x] Auto-split UI with queue rendering.
 - [x] Manual segment add/edit/delete.
 - [x] Segment reordering and inline time edits.
-- [ ] Wire output settings to backend payload.
-- [ ] Persist output settings (per user/session).
-- [ ] Output settings: preset + vertical/crop method wiring.
+- [x] Output settings: preset + vertical/crop method wiring.
+- [x] Output settings: aspect ratio selection wiring.
+- [x] Output settings: aspect ratio fit mode (black bars).
 - [ ] Output settings: captions toggle + caption style wiring.
 - [ ] Output settings: font size + highlight color wiring.
 - [ ] Output settings: language selection wiring.
 - [ ] Output settings: background music toggle placeholder (no backend yet).
 - [ ] Output settings: output/thumbnail folder input wiring.
 - [ ] Output settings: validation + helper messages.
+- [ ] Auto scene detection
 
 ## Phase 3: Reliability + Ops
 - [x] Proxy/cookie handling and redacted logging.

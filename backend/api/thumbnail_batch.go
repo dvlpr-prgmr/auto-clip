@@ -85,6 +85,7 @@ func (h *Handler) ThumbnailBatch(w http.ResponseWriter, r *http.Request) {
 	if cookie != "" {
 		ffmpegHeaders += fmt.Sprintf("Cookie: %s\r\n", cookie)
 	}
+	videoFilter := buildVideoFilter(req.OutputSettings)
 
 	results := make([]ThumbnailSegmentResponse, 0, len(req.Segments))
 	successCount := 0
@@ -136,6 +137,11 @@ func (h *Handler) ThumbnailBatch(w http.ResponseWriter, r *http.Request) {
 		ffmpegArgs = append(ffmpegArgs,
 			"-ss", fmt.Sprintf("%.3f", sourceTimestamp),
 			"-i", streamURL,
+		)
+		if videoFilter != "" {
+			ffmpegArgs = append(ffmpegArgs, "-vf", videoFilter)
+		}
+		ffmpegArgs = append(ffmpegArgs,
 			"-frames:v", "1",
 			"-q:v", "2",
 			thumbPath,

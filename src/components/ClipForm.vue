@@ -1,5 +1,6 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
+import { outputSettings } from '../stores/outputSettings.js';
 
 const apiBase = computed(() => {
   const base = import.meta.env.VITE_API_BASE?.trim();
@@ -197,6 +198,7 @@ async function refreshSegmentThumbnails() {
     const payload = {
       url: payloadUrl,
       segments: segments.value.map((segment) => buildSegmentPayload(segment)),
+      output_settings: buildOutputSettingsPayload(),
     };
     const response = await fetch(`${apiBase.value}/api/thumbnail/batch`, {
       method: 'POST',
@@ -693,6 +695,16 @@ function buildSegmentPayload(segment) {
   };
 }
 
+function buildOutputSettingsPayload() {
+  return {
+    preset: outputSettings.preset,
+    vertical: outputSettings.vertical,
+    aspect_ratio: outputSettings.aspectRatio,
+    aspect_mode: outputSettings.aspectMode,
+    crop_method: outputSettings.cropMethod,
+  };
+}
+
 async function handleSubmit() {
   status.type = 'idle';
   status.message = '';
@@ -713,6 +725,7 @@ async function handleSubmit() {
       const payload = {
         url: payloadUrl,
         segments: segments.value.map((segment) => buildSegmentPayload(segment)),
+        output_settings: buildOutputSettingsPayload(),
       };
 
       const response = await fetch(`${apiBase.value}/api/clip/batch`, {
@@ -765,6 +778,7 @@ async function handleSubmit() {
         url: payloadUrl,
         start: Number(form.start),
         end: Number(form.end),
+        output_settings: buildOutputSettingsPayload(),
       };
 
       const response = await fetch(`${apiBase.value}/api/clip`, {

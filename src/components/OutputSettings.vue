@@ -1,24 +1,13 @@
 <script setup>
-import { reactive } from 'vue';
-
-const presets = ['YouTube Shorts', 'TikTok', 'Instagram Reels', 'Landscape HD'];
-const cropMethods = ['center', 'top', 'bottom', 'smart'];
-const captionStyles = ['word_highlight', 'karaoke', 'subtitle'];
-const languages = ['auto', 'en', 'id', 'jp'];
-
-const settings = reactive({
-  preset: presets[0],
-  vertical: true,
-  cropMethod: cropMethods[0],
-  captions: true,
-  captionStyle: captionStyles[0],
-  fontSize: 56,
-  highlight: '#F2C14E',
-  language: languages[0],
-  backgroundMusic: false,
-  outputFolder: '/output/clips',
-  thumbnailFolder: '/output/thumbnails',
-});
+import {
+  outputSettings as settings,
+  outputSettingAspectModes as aspectModes,
+  outputSettingCaptionStyles as captionStyles,
+  outputSettingCropMethods as cropMethods,
+  outputSettingLanguages as languages,
+  outputSettingAspectRatios as aspectRatios,
+  outputSettingPresets as presets,
+} from '../stores/outputSettings.js';
 </script>
 
 <template>
@@ -43,10 +32,32 @@ const settings = reactive({
       <div class="mt-4 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-200">
         <label class="flex items-center gap-2">
           <input v-model="settings.vertical" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
-          Convert to vertical (9:16)
+          Enable aspect ratio framing
         </label>
         <select v-model="settings.cropMethod" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
           <option v-for="method in cropMethods" :key="method" :value="method">{{ method }}</option>
+        </select>
+      </div>
+
+      <div class="mt-3 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-200">
+        <span>Aspect ratio</span>
+        <select
+          v-model="settings.aspectRatio"
+          :disabled="!settings.vertical"
+          class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option v-for="ratio in aspectRatios" :key="ratio.value" :value="ratio.value">{{ ratio.label }}</option>
+        </select>
+      </div>
+
+      <div class="mt-3 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-200">
+        <span>Layout</span>
+        <select
+          v-model="settings.aspectMode"
+          :disabled="!settings.vertical"
+          class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option v-for="mode in aspectModes" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
         </select>
       </div>
     </div>

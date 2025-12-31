@@ -1,5 +1,43 @@
 # Changelog
 
+### 2025-12-31 18:08 UTC+7
+
+**Aspect ratio fit mode**
+
+- Frontend: add layout mode selector for aspect ratio framing.
+- Backend: support fit mode with black bars (pad to 9:16 canvas).
+- Docs: mark aspect ratio fit mode done in `PLAN.md`.
+
+### 2025-12-31 18:02 UTC+7
+
+**Aspect ratio options**
+
+- Frontend: add aspect ratio selector shared across panels and include it in output settings payload.
+- Backend: support 1:1 and 4:5 crop targets in vertical render filter.
+- Docs: mark aspect ratio wiring complete in `PLAN.md`.
+
+### 2025-12-31 17:57 UTC+7
+
+**Vertical output crop**
+
+- Backend: apply 9:16 scale + crop when output settings request vertical render.
+- Backend: apply the same filter for batch thumbnails.
+- Frontend: send output settings in thumbnail refresh payloads.
+
+### 2025-12-31 17:46 UTC+7
+
+**Output settings payload wiring**
+
+- Frontend: share output settings state between panels and include preset + vertical/crop in clip payloads.
+- Backend: accept `output_settings` in clip and batch requests (no render changes yet).
+- Docs: mark preset + vertical/crop wiring complete in `PLAN.md`.
+
+### 2025-12-31 17:44 UTC+7
+
+**Plan cleanup**
+
+- Docs: remove redundant Output Settings parent tasks from Phase 2.
+
 ### 2025-12-31 17:37 UTC+7
 
 **Segment inline edits + reorder**

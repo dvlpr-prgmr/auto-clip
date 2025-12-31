@@ -18,9 +18,10 @@ import (
 )
 
 type ClipRequest struct {
-	URL   string  `json:"url"`
-	Start float64 `json:"start"`
-	End   float64 `json:"end"`
+	URL            string          `json:"url"`
+	Start          float64         `json:"start"`
+	End            float64         `json:"end"`
+	OutputSettings *OutputSettings `json:"output_settings,omitempty"`
 }
 
 type ClipSegmentRequest struct {
@@ -30,8 +31,75 @@ type ClipSegmentRequest struct {
 }
 
 type BatchClipRequest struct {
-	URL      string               `json:"url"`
-	Segments []ClipSegmentRequest `json:"segments"`
+	URL            string               `json:"url"`
+	Segments       []ClipSegmentRequest `json:"segments"`
+	OutputSettings *OutputSettings      `json:"output_settings,omitempty"`
+}
+
+type OutputSettings struct {
+	Preset      string `json:"preset,omitempty"`
+	Vertical    bool   `json:"vertical,omitempty"`
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+	AspectMode  string `json:"aspect_mode,omitempty"`
+	CropMethod  string `json:"crop_method,omitempty"`
+}
+
+func buildVideoFilter(settings *OutputSettings) string {
+	if settings == nil || !settings.Vertical {
+		return ""
+	}
+
+	targetWidth := 1080
+	targetHeight := 1920
+	switch strings.TrimSpace(settings.AspectRatio) {
+	case "1:1":
+		targetHeight = 1080
+	case "4:5":
+		targetHeight = 1350
+	case "9:16", "":
+		// default
+	default:
+		// Unknown ratios fall back to 9:16.
+	}
+
+	cropX := "(in_w-out_w)/2"
+	cropY := "(in_h-out_h)/2"
+	switch strings.ToLower(strings.TrimSpace(settings.CropMethod)) {
+	case "top":
+		cropY = "0"
+	case "bottom":
+		cropY = "in_h-out_h"
+	case "center", "":
+		// keep default
+	default:
+		// "smart" or unknown values fall back to center
+	}
+
+	aspectMode := strings.ToLower(strings.TrimSpace(settings.AspectMode))
+	if aspectMode == "fit" && targetHeight < 1920 {
+		return fmt.Sprintf(
+			"scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d:%s:%s,setsar=1,pad=%d:%d:0:(%d-ih)/2:color=black",
+			targetWidth,
+			targetHeight,
+			targetWidth,
+			targetHeight,
+			cropX,
+			cropY,
+			targetWidth,
+			1920,
+			1920,
+		)
+	}
+
+	return fmt.Sprintf(
+		"scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d:%s:%s,setsar=1",
+		targetWidth,
+		targetHeight,
+		targetWidth,
+		targetHeight,
+		cropX,
+		cropY,
+	)
 }
 
 type ClipResponse struct {
@@ -237,6 +305,7 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 	ts := time.Now().UnixNano()
 	baseName := buildClipBaseName(clipID, ts, 0)
 	outputPath := filepath.Join(outputDir, baseName)
+	videoFilter := buildVideoFilter(req.OutputSettings)
 
 	// 4. Render via ffmpeg
 	// -ss before -i is crucial for fast seeking.
@@ -259,6 +328,11 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 		"-ss", fmt.Sprintf("%f", req.Start),
 		"-i", streamURL,
 		"-t", fmt.Sprintf("%f", duration),
+	)
+	if videoFilter != "" {
+		ffmpegArgs = append(ffmpegArgs, "-vf", videoFilter)
+	}
+	ffmpegArgs = append(ffmpegArgs,
 		"-c:v", "libx264", "-preset", "ultrafast", // Re-encode to ensure precise cuts
 		"-c:a", "aac",
 		"-movflags", "frag_keyframe+empty_moov",
@@ -379,6 +453,7 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 
 	clipID := sanitizeVideoID(video.ID)
 	batchTimestamp := time.Now().UnixNano()
+	videoFilter := buildVideoFilter(req.OutputSettings)
 
 	ffmpegHeaders := fmt.Sprintf("User-Agent: %s\r\n", userAgent)
 	if cookie != "" {
@@ -429,6 +504,11 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 			"-ss", fmt.Sprintf("%f", segment.Start),
 			"-i", streamURL,
 			"-t", fmt.Sprintf("%f", duration),
+		)
+		if videoFilter != "" {
+			ffmpegArgs = append(ffmpegArgs, "-vf", videoFilter)
+		}
+		ffmpegArgs = append(ffmpegArgs,
 			"-c:v", "libx264", "-preset", "ultrafast",
 			"-c:a", "aac",
 			"-movflags", "frag_keyframe+empty_moov",
