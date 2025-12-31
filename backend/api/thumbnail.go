@@ -9,7 +9,13 @@ import (
 	"strings"
 )
 
+const defaultThumbnailTimestamp = 0.2
+
 func generateThumbnail(clipPath string) (string, error) {
+	return generateThumbnailAt(clipPath, defaultThumbnailTimestamp)
+}
+
+func generateThumbnailAt(clipPath string, timestampSec float64) (string, error) {
 	if strings.TrimSpace(clipPath) == "" {
 		return "", fmt.Errorf("clip path is empty")
 	}
@@ -25,12 +31,16 @@ func generateThumbnail(clipPath string) (string, error) {
 	baseName := strings.TrimSuffix(filepath.Base(clipPath), filepath.Ext(clipPath))
 	thumbPath := filepath.Join(outputDir, baseName+".jpg")
 
+	if timestampSec < 0 {
+		timestampSec = 0
+	}
+
 	cmd := exec.Command(
 		"ffmpeg",
 		"-hide_banner",
 		"-loglevel", "error",
 		"-y",
-		"-ss", "0.2",
+		"-ss", fmt.Sprintf("%.3f", timestampSec),
 		"-i", clipPath,
 		"-frames:v", "1",
 		"-q:v", "2",

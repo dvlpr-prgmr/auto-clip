@@ -7,8 +7,8 @@
 - [x] Render clips to disk and return JSON metadata.
 - [x] Generate a thumbnail per clip output.
 - [x] Add `/api/preview` to fetch YouTube metadata.
-- [ ] Add multi-clip rendering (batch segments) endpoint.
-- [ ] Generate per-segment thumbnails at timestamps.
+- [x] Add multi-clip rendering (batch segments) endpoint.
+- [x] Generate per-segment thumbnails at timestamps.
 
 ## Phase 2: Editor UI + Workflow
 - [x] Editor-style layout and panels.

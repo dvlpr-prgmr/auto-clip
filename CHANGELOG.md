@@ -1,5 +1,13 @@
 # Changelog
 
+### 2025-12-31 15:21 UTC+7
+
+**Batch clip rendering**
+
+- Backend: add `/api/clip/batch` for multi-segment renders with per-segment thumbnails.
+- Backend: allow thumbnail generation at requested timestamps.
+- Docs: mark Phase 1 backend tasks complete in `PLAN.md`.
+
 ### 2025-12-31 15:15 UTC+7
 
 **Preview status details removed**

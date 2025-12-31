@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,11 +23,41 @@ type ClipRequest struct {
 	End   float64 `json:"end"`
 }
 
+type ClipSegmentRequest struct {
+	Start       float64  `json:"start"`
+	End         float64  `json:"end"`
+	ThumbnailAt *float64 `json:"thumbnail_at,omitempty"`
+}
+
+type BatchClipRequest struct {
+	URL      string               `json:"url"`
+	Segments []ClipSegmentRequest `json:"segments"`
+}
+
 type ClipResponse struct {
 	OutputPath     string `json:"output_path"`
 	ThumbnailPath  string `json:"thumbnail_path,omitempty"`
 	ThumbnailError string `json:"thumbnail_error,omitempty"`
 	Duration       string `json:"duration"`
+}
+
+type ClipSegmentResponse struct {
+	Index          int     `json:"index"`
+	Start          float64 `json:"start"`
+	End            float64 `json:"end"`
+	OutputPath     string  `json:"output_path,omitempty"`
+	ThumbnailPath  string  `json:"thumbnail_path,omitempty"`
+	ThumbnailError string  `json:"thumbnail_error,omitempty"`
+	RenderDuration string  `json:"render_duration,omitempty"`
+	ThumbnailAt    float64 `json:"thumbnail_at,omitempty"`
+	Error          string  `json:"error,omitempty"`
+}
+
+type BatchClipResponse struct {
+	Results []ClipSegmentResponse `json:"results"`
+	Total   int                  `json:"total"`
+	Success int                  `json:"success"`
+	Failed  int                  `json:"failed"`
 }
 
 type Handler struct {
@@ -45,6 +76,95 @@ func (rt headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		}
 	}
 	return rt.base.RoundTrip(req)
+}
+
+func pickClipFormat(formats youtube.FormatList) *youtube.Format {
+	for _, f := range formats {
+		if f.MimeType != "" && strings.Contains(f.MimeType, "video/mp4") && f.AudioChannels > 0 {
+			return &f
+		}
+	}
+
+	for _, f := range formats {
+		if f.AudioChannels > 0 && f.Width > 0 {
+			return &f
+		}
+	}
+
+	return nil
+}
+
+func sanitizeVideoID(raw string) string {
+	clipID := strings.TrimSpace(raw)
+	if clipID == "" {
+		return ""
+	}
+
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '-' || r == '_':
+			return r
+		default:
+			return -1
+		}
+	}, clipID)
+}
+
+func buildClipBaseName(clipID string, ts int64, index int) string {
+	base := fmt.Sprintf("clip-%d", ts)
+	if clipID != "" {
+		base = fmt.Sprintf("clip-%s-%d", clipID, ts)
+	}
+	if index > 0 {
+		base = fmt.Sprintf("%s-%02d", base, index)
+	}
+	return base + ".mp4"
+}
+
+func (h *Handler) getVideoStream(videoURL string) (*youtube.Video, string, string, string, proxyConfig, error) {
+	userAgent := resolveUserAgent()
+	cookie := resolveYouTubeCookie(h.Logger)
+
+	defaultHeaders := http.Header{}
+	defaultHeaders.Set("User-Agent", userAgent)
+	if cookie != "" {
+		defaultHeaders.Set("Cookie", cookie)
+	}
+
+	proxyCfg := resolveProxyConfig(h.Logger)
+	logProxySettings(h.Logger, proxyCfg)
+
+	client := youtube.Client{
+		HTTPClient: &http.Client{
+			Transport: headerRoundTripper{
+				base:    proxyCfg.baseTransport,
+				headers: defaultHeaders,
+			},
+		},
+	}
+
+	video, err := client.GetVideo(videoURL)
+	if err != nil {
+		return nil, "", userAgent, cookie, proxyCfg, err
+	}
+
+	format := pickClipFormat(video.Formats)
+	if format == nil {
+		return video, "", userAgent, cookie, proxyCfg, fmt.Errorf("no suitable video format found")
+	}
+
+	streamURL, err := client.GetStreamURL(video, format)
+	if err != nil {
+		return video, "", userAgent, cookie, proxyCfg, err
+	}
+
+	return video, streamURL, userAgent, cookie, proxyCfg, nil
 }
 
 func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
@@ -75,63 +195,7 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// 3. Get Stream URL using go-youtube library
-	userAgent := resolveUserAgent()
-	cookie := resolveYouTubeCookie(h.Logger)
-
-	defaultHeaders := http.Header{}
-	defaultHeaders.Set("User-Agent", userAgent)
-	if cookie != "" {
-		defaultHeaders.Set("Cookie", cookie)
-	}
-
-	// Proxy handling: disable proxies by default to avoid corporate proxy 403s; allow override via YOUTUBE_PROXY or YOUTUBE_DISABLE_PROXY=false
-	proxyCfg := resolveProxyConfig(h.Logger)
-	logProxySettings(h.Logger, proxyCfg)
-
-	client := youtube.Client{
-		HTTPClient: &http.Client{
-			Transport: headerRoundTripper{
-				base:    proxyCfg.baseTransport,
-				headers: defaultHeaders,
-			},
-		},
-	}
-	video, err := client.GetVideo(req.URL)
-	if err != nil {
-		h.Logger.Error("Failed to get video info", map[string]string{"Error": err.Error()})
-		http.Error(w, "Failed to get video info", http.StatusInternalServerError)
-		return
-	}
-
-	// Find best format with both audio and video
-	var format *youtube.Format
-
-	// Sort formats by quality (optional, but library formats are usually unsorted)
-	// For simplicity, we just look for the first decent match: mp4 with audio
-	for _, f := range video.Formats {
-		if f.MimeType != "" && strings.Contains(f.MimeType, "video/mp4") && f.AudioChannels > 0 {
-			format = &f
-			break
-		}
-	}
-
-	// Fallback: if no mp4 with audio, just take the first format that has audio and video
-	if format == nil {
-		for _, f := range video.Formats {
-			if f.AudioChannels > 0 && f.Width > 0 {
-				format = &f
-				break
-			}
-		}
-	}
-
-	if format == nil {
-		h.Logger.Error("No suitable format found", nil)
-		http.Error(w, "No suitable video format found", http.StatusInternalServerError)
-		return
-	}
-
-	streamURL, err := client.GetStreamURL(video, format)
+	video, streamURL, userAgent, cookie, proxyCfg, err := h.getVideoStream(req.URL)
 	if err != nil {
 		h.Logger.Error("Failed to get stream URL", map[string]string{"Error": err.Error()})
 		http.Error(w, "Failed to get stream URL", http.StatusInternalServerError)
@@ -148,29 +212,10 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clipID := strings.TrimSpace(video.ID)
-	if clipID != "" {
-		clipID = strings.Map(func(r rune) rune {
-			switch {
-			case r >= 'a' && r <= 'z':
-				return r
-			case r >= 'A' && r <= 'Z':
-				return r
-			case r >= '0' && r <= '9':
-				return r
-			case r == '-' || r == '_':
-				return r
-			default:
-				return -1
-			}
-		}, clipID)
-	}
+	clipID := sanitizeVideoID(video.ID)
 
 	ts := time.Now().UnixNano()
-	baseName := fmt.Sprintf("clip-%d.mp4", ts)
-	if clipID != "" {
-		baseName = fmt.Sprintf("clip-%s-%d.mp4", clipID, ts)
-	}
+	baseName := buildClipBaseName(clipID, ts, 0)
 	outputPath := filepath.Join(outputDir, baseName)
 
 	// 4. Render via ffmpeg
@@ -260,6 +305,188 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.Logger.Error("Clip Response Failed", map[string]string{"Error": err.Error()})
+	}
+}
+
+func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req BatchClipRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	req.URL = strings.TrimSpace(req.URL)
+	if req.URL == "" {
+		http.Error(w, "Missing url field", http.StatusBadRequest)
+		return
+	}
+	if len(req.Segments) == 0 {
+		http.Error(w, "Missing segments field", http.StatusBadRequest)
+		return
+	}
+	if len(req.Segments) > 500 {
+		http.Error(w, "Too many segments (max 500)", http.StatusBadRequest)
+		return
+	}
+
+	h.Logger.Info("Batch Clip Request Received", map[string]string{
+		"URL":       req.URL,
+		"Segments":  fmt.Sprintf("%d", len(req.Segments)),
+		"Requester": r.RemoteAddr,
+	})
+
+	video, streamURL, userAgent, cookie, proxyCfg, err := h.getVideoStream(req.URL)
+	if err != nil {
+		h.Logger.Error("Failed to get stream URL", map[string]string{"Error": err.Error()})
+		http.Error(w, "Failed to get stream URL", http.StatusInternalServerError)
+		return
+	}
+
+	outputDir := strings.TrimSpace(os.Getenv("CLIP_OUTPUT_DIR"))
+	if outputDir == "" {
+		outputDir = filepath.Join("output", "clips")
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		h.Logger.Error("Failed to create output directory", map[string]string{"Error": err.Error(), "Path": outputDir})
+		http.Error(w, "Failed to create output directory", http.StatusInternalServerError)
+		return
+	}
+
+	clipID := sanitizeVideoID(video.ID)
+	batchTimestamp := time.Now().UnixNano()
+
+	ffmpegHeaders := fmt.Sprintf("User-Agent: %s\r\n", userAgent)
+	if cookie != "" {
+		ffmpegHeaders += fmt.Sprintf("Cookie: %s\r\n", cookie)
+	}
+
+	results := make([]ClipSegmentResponse, 0, len(req.Segments))
+	successCount := 0
+	failureCount := 0
+
+	for idx, segment := range req.Segments {
+		segmentIndex := idx + 1
+		result := ClipSegmentResponse{
+			Index: segmentIndex,
+			Start: segment.Start,
+			End:   segment.End,
+		}
+
+		if segment.Start < 0 {
+			result.Error = "Start time must be >= 0"
+			failureCount++
+			results = append(results, result)
+			continue
+		}
+
+		duration := segment.End - segment.Start
+		if duration <= 0 {
+			result.Error = "End time must be greater than start time"
+			failureCount++
+			results = append(results, result)
+			continue
+		}
+
+		thumbAt := defaultThumbnailTimestamp
+		if segment.ThumbnailAt != nil {
+			thumbAt = *segment.ThumbnailAt
+		}
+		if thumbAt < 0 {
+			thumbAt = defaultThumbnailTimestamp
+		}
+		maxThumbAt := math.Max(duration-0.05, 0)
+		if thumbAt > maxThumbAt {
+			thumbAt = maxThumbAt
+		}
+		result.ThumbnailAt = thumbAt
+
+		baseName := buildClipBaseName(clipID, batchTimestamp, segmentIndex)
+		outputPath := filepath.Join(outputDir, baseName)
+
+		ffmpegArgs := []string{
+			"-user_agent", userAgent,
+			"-headers", ffmpegHeaders,
+		}
+		if proxyCfg.proxyURLStr != "" {
+			ffmpegArgs = append(ffmpegArgs, "-http_proxy", proxyCfg.proxyURLStr)
+		}
+		ffmpegArgs = append(ffmpegArgs,
+			"-ss", fmt.Sprintf("%f", segment.Start),
+			"-i", streamURL,
+			"-t", fmt.Sprintf("%f", duration),
+			"-c:v", "libx264", "-preset", "ultrafast",
+			"-c:a", "aac",
+			"-movflags", "frag_keyframe+empty_moov",
+			"-f", "mp4",
+			outputPath,
+		)
+
+		h.Logger.Info("FFmpeg Args (Batch)", map[string]string{
+			"Args":    sanitizeFFmpegArgs(ffmpegArgs),
+			"Segment": fmt.Sprintf("%d", segmentIndex),
+		})
+
+		cmdFfmpeg := exec.Command("ffmpeg", ffmpegArgs...)
+		cmdFfmpeg.Env = buildFFmpegEnv(proxyCfg.proxyURLStr, proxyCfg.proxyDisabled, proxyCfg.httpProxyEnv)
+
+		var ffmpegErr bytes.Buffer
+		cmdFfmpeg.Stderr = &ffmpegErr
+
+		startRender := time.Now()
+		if err := cmdFfmpeg.Run(); err != nil {
+			_ = os.Remove(outputPath)
+			h.Logger.Error("Batch Clip Failed", map[string]string{
+				"Error":   err.Error(),
+				"Stderr":  ffmpegErr.String(),
+				"Output":  outputPath,
+				"Segment": fmt.Sprintf("%d", segmentIndex),
+			})
+			result.Error = "Failed to generate clip"
+			failureCount++
+			results = append(results, result)
+			continue
+		}
+
+		renderDuration := time.Since(startRender)
+		result.OutputPath = outputPath
+		result.RenderDuration = renderDuration.String()
+
+		thumbPath, thumbErr := generateThumbnailAt(outputPath, thumbAt)
+		if thumbErr != nil {
+			h.Logger.Warning("Batch Thumbnail Failed", map[string]string{
+				"Error":   thumbErr.Error(),
+				"Output":  outputPath,
+				"Segment": fmt.Sprintf("%d", segmentIndex),
+			})
+			result.ThumbnailError = thumbErr.Error()
+		} else {
+			h.Logger.Info("Batch Thumbnail Success", map[string]string{
+				"OutputPath":    outputPath,
+				"ThumbnailPath": thumbPath,
+				"Segment":       fmt.Sprintf("%d", segmentIndex),
+			})
+			result.ThumbnailPath = thumbPath
+		}
+
+		successCount++
+		results = append(results, result)
+	}
+
+	response := BatchClipResponse{
+		Results: results,
+		Total:   len(req.Segments),
+		Success: successCount,
+		Failed:  failureCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.Logger.Error("Batch Clip Response Failed", map[string]string{"Error": err.Error()})
 	}
 }
 
