@@ -28,6 +28,15 @@ const result = reactive({
   thumbnailPath: '',
   thumbnailError: '',
 });
+const batchSummary = reactive({
+  total: 0,
+  success: 0,
+  failed: 0,
+});
+const thumbnailStatus = reactive({
+  state: 'idle',
+  message: '',
+});
 const preview = reactive({
   title: '',
   durationLabel: '',
@@ -107,6 +116,15 @@ const estimatedClips = computed(() => {
   const maxInterval = Math.max(Number(autoSplit.max) || 1, 1);
   return Math.ceil(segmentDuration.value / maxInterval);
 });
+const isBatchMode = computed(() => segments.value.length > 1 || segmentsMode.value !== 'single');
+const hasSegments = computed(() => segments.value.length > 0);
+const outputRootKey = '/output/';
+const outputRootPrefix = 'output/';
+
+const defaultThumbnailAt = 0.2;
+let thumbnailTimer = null;
+let thumbnailRequestId = 0;
+let thumbnailStatusTimer = null;
 
 function formatTime(value) {
   const seconds = Number(value);
@@ -121,6 +139,118 @@ function formatTime(value) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
   return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function resolveThumbnailAt(duration, override) {
+  const safeDuration = Number.isFinite(duration) ? Math.max(duration, 0) : 0;
+  if (Number.isFinite(override) && override >= 0 && override <= safeDuration) {
+    return override;
+  }
+  if (safeDuration <= 0) {
+    return defaultThumbnailAt;
+  }
+  const preferred = Math.max(safeDuration * 0.2, defaultThumbnailAt);
+  return Math.min(preferred, Math.max(safeDuration - 0.05, 0));
+}
+
+function resolveMediaUrl(filePath) {
+  if (!filePath) return '';
+  const normalized = String(filePath).replace(/\\/g, '/');
+  const outputIndex = normalized.lastIndexOf(outputRootKey);
+  if (outputIndex !== -1) {
+    const relative = normalized.slice(outputIndex + outputRootKey.length);
+    return `${apiBase.value}/media/${relative}`;
+  }
+  if (normalized.startsWith(outputRootPrefix)) {
+    return `${apiBase.value}/media/${normalized.slice(outputRootPrefix.length)}`;
+  }
+  return '';
+}
+
+function resetThumbnailStatusSoon() {
+  if (thumbnailStatusTimer) {
+    clearTimeout(thumbnailStatusTimer);
+  }
+  thumbnailStatusTimer = setTimeout(() => {
+    if (thumbnailStatus.state === 'success') {
+      thumbnailStatus.state = 'idle';
+      thumbnailStatus.message = '';
+    }
+  }, 1600);
+}
+
+async function refreshSegmentThumbnails() {
+  const payloadUrl = form.url.trim();
+  if (!payloadUrl || !segments.value.length) return;
+
+  thumbnailStatus.state = 'loading';
+  thumbnailStatus.message = 'Updating thumbnails...';
+  const requestId = ++thumbnailRequestId;
+
+  try {
+    const payload = {
+      url: payloadUrl,
+      segments: segments.value.map((segment) => buildSegmentPayload(segment)),
+    };
+    const response = await fetch(`${apiBase.value}/api/thumbnail/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let detail = 'Failed to update thumbnails.';
+      try {
+        const errorPayload = await response.json();
+        detail = errorPayload.error || errorPayload.detail || detail;
+      } catch (e) {
+        // If parsing fails, fall back to generic message.
+      }
+      throw new Error(detail);
+    }
+
+    const resultPayload = await response.json();
+    if (requestId !== thumbnailRequestId) {
+      return;
+    }
+
+    const results = Array.isArray(resultPayload.results) ? resultPayload.results : [];
+    const resultMap = new Map(results.map((entry) => [entry.index, entry]));
+
+    segments.value = reindexSegments(
+      segments.value.map((segment) => {
+        const entry = resultMap.get(segment.index);
+        if (!entry) return segment;
+        const resolvedThumbUrl = resolveMediaUrl(entry.thumbnail_path || '');
+        return {
+          ...segment,
+          thumbnailPath: entry.thumbnail_path || '',
+          thumbnailError: entry.thumbnail_error || '',
+          thumbnailAt: Number.isFinite(entry.thumbnail_at) ? entry.thumbnail_at : segment.thumbnailAt,
+          thumbnailUrl: resolvedThumbUrl || segment.thumbnailUrl || '',
+        };
+      }),
+    );
+
+    thumbnailStatus.state = 'success';
+    thumbnailStatus.message = 'Thumbnails updated.';
+    resetThumbnailStatusSoon();
+  } catch (error) {
+    if (requestId !== thumbnailRequestId) {
+      return;
+    }
+    thumbnailStatus.state = 'error';
+    thumbnailStatus.message = error.message || 'Failed to update thumbnails.';
+  }
+}
+
+function scheduleThumbnailRefresh() {
+  if (thumbnailTimer) {
+    clearTimeout(thumbnailTimer);
+  }
+  thumbnailTimer = setTimeout(() => {
+    refreshSegmentThumbnails();
+  }, 500);
 }
 
 function closeAutoSplit() {
@@ -172,13 +302,20 @@ function getRange() {
 }
 
 function createSegment(start, end, index) {
+  const duration = Math.max(end - start, 0);
   return {
     id: `${index}-${start}-${end}`,
     index,
     start,
     end,
-    duration: Math.max(end - start, 0),
+    duration,
     thumbnailUrl: preview.thumbnailUrl || '',
+    thumbnailAt: resolveThumbnailAt(duration),
+    outputPath: '',
+    thumbnailPath: '',
+    thumbnailError: '',
+    renderDuration: '',
+    renderError: '',
   };
 }
 
@@ -187,7 +324,8 @@ function reindexSegments(items) {
     ...segment,
     index: idx + 1,
     duration: Math.max(segment.end - segment.start, 0),
-    thumbnailUrl: preview.thumbnailUrl || segment.thumbnailUrl || '',
+    thumbnailUrl: segment.thumbnailUrl || preview.thumbnailUrl || '',
+    thumbnailAt: resolveThumbnailAt(Math.max(segment.end - segment.start, 0), segment.thumbnailAt),
   }));
 }
 
@@ -242,6 +380,7 @@ function applyAutoSplit() {
   autoSplitApplied.value = true;
   refreshSegments();
   showAutoSplit.value = false;
+  scheduleThumbnailRefresh();
 }
 
 function addManualClip() {
@@ -267,7 +406,7 @@ function addManualClip() {
               start,
               end,
               duration: Math.max(end - start, 0),
-              thumbnailUrl: preview.thumbnailUrl || segment.thumbnailUrl || '',
+              thumbnailUrl: segment.thumbnailUrl || preview.thumbnailUrl || '',
             }
           : segment,
       ),
@@ -281,6 +420,7 @@ function addManualClip() {
   }
   editingSegmentId.value = '';
   showAddClip.value = false;
+  scheduleThumbnailRefresh();
 }
 
 function duplicateSegmentShift() {
@@ -303,6 +443,7 @@ function duplicateSegmentShift() {
   const next = createSegment(start, end, segments.value.length + 1);
   segments.value = reindexSegments([...segments.value, next]);
   selectedSegmentId.value = next.id;
+  scheduleThumbnailRefresh();
 }
 
 function deleteSegment(segment) {
@@ -313,6 +454,15 @@ function deleteSegment(segment) {
   if (selectedSegmentId.value === segment.id) {
     selectedSegmentId.value = '';
   }
+  scheduleThumbnailRefresh();
+}
+
+function clearAllSegments() {
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  segments.value = [];
+  selectedSegmentId.value = '';
+  editingSegmentId.value = '';
 }
 
 let previewTimer = null;
@@ -436,45 +586,127 @@ watch(
 
 refreshSegments();
 
+function clearSegmentRenderData() {
+  segments.value = segments.value.map((segment) => ({
+    ...segment,
+    outputPath: '',
+    thumbnailPath: '',
+    thumbnailError: '',
+    renderDuration: '',
+    renderError: '',
+  }));
+}
+
+function buildSegmentPayload(segment) {
+  const start = Number(segment.start);
+  const end = Number(segment.end);
+  const duration = Number.isFinite(end - start) ? Math.max(end - start, 0) : 0;
+  return {
+    start,
+    end,
+    thumbnail_at: resolveThumbnailAt(duration, segment.thumbnailAt),
+  };
+}
+
 async function handleSubmit() {
   status.type = 'idle';
   status.message = '';
   result.outputPath = '';
   result.thumbnailPath = '';
   result.thumbnailError = '';
+  batchSummary.total = 0;
+  batchSummary.success = 0;
+  batchSummary.failed = 0;
+  clearSegmentRenderData();
   isSubmitting.value = true;
 
   try {
-    const payload = {
-      url: form.url.trim(),
-      start: Number(form.start),
-      end: Number(form.end),
-    };
+    const payloadUrl = form.url.trim();
+    const shouldBatch = isBatchMode.value;
 
-    const response = await fetch(`${apiBase.value}/api/clip`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    if (shouldBatch) {
+      const payload = {
+        url: payloadUrl,
+        segments: segments.value.map((segment) => buildSegmentPayload(segment)),
+      };
 
-    if (!response.ok) {
-      let detail = 'Failed to generate clip.';
-      try {
-        const errorPayload = await response.json();
-        detail = errorPayload.error || errorPayload.detail || detail;
-      } catch (e) {
-        // If parsing fails, fall back to generic message.
+      const response = await fetch(`${apiBase.value}/api/clip/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let detail = 'Failed to generate clips.';
+        try {
+          const errorPayload = await response.json();
+          detail = errorPayload.error || errorPayload.detail || detail;
+        } catch (e) {
+          // If parsing fails, fall back to generic message.
+        }
+        throw new Error(detail);
       }
-      throw new Error(detail);
+
+      const resultPayload = await response.json();
+      const results = Array.isArray(resultPayload.results) ? resultPayload.results : [];
+      const resultMap = new Map(results.map((entry) => [entry.index, entry]));
+
+      batchSummary.total = Number(resultPayload.total) || results.length;
+      batchSummary.success = Number(resultPayload.success) || 0;
+      batchSummary.failed = Number(resultPayload.failed) || 0;
+
+      segments.value = reindexSegments(
+        segments.value.map((segment) => {
+          const entry = resultMap.get(segment.index);
+          if (!entry) return segment;
+          const resolvedThumbUrl = resolveMediaUrl(entry.thumbnail_path || '');
+          return {
+            ...segment,
+            outputPath: entry.output_path || '',
+            thumbnailPath: entry.thumbnail_path || '',
+            thumbnailError: entry.thumbnail_error || '',
+            renderDuration: entry.render_duration || '',
+            renderError: entry.error || '',
+            thumbnailAt: Number.isFinite(entry.thumbnail_at) ? entry.thumbnail_at : segment.thumbnailAt,
+            thumbnailUrl: resolvedThumbUrl || segment.thumbnailUrl || '',
+          };
+        }),
+      );
+
+      status.type = batchSummary.failed > 0 ? 'error' : 'success';
+      status.message = `Batch done: ${batchSummary.success} succeeded, ${batchSummary.failed} failed.`;
+    } else {
+      const payload = {
+        url: payloadUrl,
+        start: Number(form.start),
+        end: Number(form.end),
+      };
+
+      const response = await fetch(`${apiBase.value}/api/clip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let detail = 'Failed to generate clip.';
+        try {
+          const errorPayload = await response.json();
+          detail = errorPayload.error || errorPayload.detail || detail;
+        } catch (e) {
+          // If parsing fails, fall back to generic message.
+        }
+        throw new Error(detail);
+      }
+
+      const resultPayload = await response.json();
+      result.outputPath = resultPayload.output_path || '';
+      result.thumbnailPath = resultPayload.thumbnail_path || '';
+      result.thumbnailError = resultPayload.thumbnail_error || '';
+
+      status.type = 'success';
+      status.message = 'Clip saved on the server.';
     }
-
-    const resultPayload = await response.json();
-    result.outputPath = resultPayload.output_path || '';
-    result.thumbnailPath = resultPayload.thumbnail_path || '';
-    result.thumbnailError = resultPayload.thumbnail_error || '';
-
-    status.type = 'success';
-    status.message = 'Clip saved on the server.';
   } catch (error) {
     status.type = 'error';
     status.message = error.message || 'Unexpected error generating clip.';
@@ -651,8 +883,29 @@ async function handleSubmit() {
               Auto-split
             </button>
           </div>
-          <span class="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-400">Manual queue</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="!hasSegments"
+              @click="clearAllSegments"
+            >
+              Clear all segments
+            </button>
+            <span class="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-400">Manual queue</span>
+          </div>
         </div>
+        <p
+          v-if="thumbnailStatus.message"
+          class="mt-2 text-[11px]"
+          :class="thumbnailStatus.state === 'error'
+            ? 'text-rose-300'
+            : thumbnailStatus.state === 'loading'
+              ? 'text-sky-200'
+              : 'text-emerald-200'"
+        >
+          {{ thumbnailStatus.message }}
+        </p>
 
         <div class="mt-4 space-y-3">
           <div v-if="segments.length" class="grid gap-3 md:grid-cols-2">
@@ -679,6 +932,21 @@ async function handleSubmit() {
                   <p class="text-sm font-semibold text-slate-100">Segment {{ String(segment.index).padStart(2, '0') }}</p>
                   <p class="text-xs text-slate-400">
                     {{ formatTime(segment.start) }} - {{ formatTime(segment.end) }} (length {{ formatTime(segment.duration) }})
+                  </p>
+                  <p class="text-[11px] text-slate-500">
+                    Thumb @ {{ formatTime(segment.thumbnailAt || 0) }}
+                    <template v-if="segment.renderError"> · Render failed</template>
+                    <template v-else-if="segment.outputPath"> · Rendered</template>
+                    <template v-else> · Pending</template>
+                  </p>
+                  <p v-if="segment.renderError" class="text-[10px] text-rose-300 break-all">
+                    Render error: {{ segment.renderError }}
+                  </p>
+                  <p v-if="segment.thumbnailPath" class="text-[10px] text-slate-500 break-all">
+                    Thumb: {{ segment.thumbnailPath }}
+                  </p>
+                  <p v-else-if="segment.thumbnailError" class="text-[10px] text-amber-300 break-all">
+                    Thumb error: {{ segment.thumbnailError }}
                   </p>
                 </div>
               </div>
@@ -718,23 +986,26 @@ async function handleSubmit() {
           <p class="text-sm font-semibold text-slate-100">Ready to render</p>
           <p>Clip is saved on the server output folder.</p>
         </div>
-        <button
-          type="submit"
-          :disabled="isSubmitting || !isValid"
-          class="inline-flex items-center justify-center rounded-xl bg-emerald-400 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <svg
-            v-if="isSubmitting"
-            class="mr-2 h-4 w-4 animate-spin text-slate-900"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
+        <div class="flex flex-col items-end gap-1 text-xs text-slate-400">
+          <button
+            type="submit"
+            :disabled="isSubmitting || !isValid || !hasSegments"
+            class="inline-flex items-center justify-center rounded-xl bg-emerald-400 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          {{ isSubmitting ? 'Rendering...' : 'Generate clip' }}
-        </button>
+            <svg
+              v-if="isSubmitting"
+              class="mr-2 h-4 w-4 animate-spin text-slate-900"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            {{ isSubmitting ? (isBatchMode ? 'Rendering clips...' : 'Rendering...') : (isBatchMode ? 'Generate clips' : 'Generate clip') }}
+          </button>
+          <span v-if="!hasSegments" class="text-[11px] text-slate-500">Tambahkan minimal satu segmen untuk render.</span>
+        </div>
       </div>
     </form>
 

@@ -1,5 +1,52 @@
 # Changelog
 
+### 2025-12-31 17:17 UTC+7
+
+**Plan: output settings wiring**
+
+- Docs: break down Output Settings implementation tasks in Phase 2.
+
+### 2025-12-31 17:13 UTC+7
+
+**Plan updates**
+
+- Docs: expand Phase 2 with output settings persistence.
+- Docs: add Phase 5 automation + Telegram bot workflow.
+
+### 2025-12-31 17:09 UTC+7
+
+**Segment guardrails**
+
+- Frontend: disable Generate clips when no segments exist and show helper text.
+- Frontend: add Clear all segments button beside Manual queue.
+
+### 2025-12-31 16:47 UTC+7
+
+**Live thumbnail refresh**
+
+- Backend: add `/api/thumbnail/batch` for per-segment thumbnail extraction without full renders.
+- Frontend: refresh segment thumbnails after add/duplicate/auto-split actions with status feedback.
+
+### 2025-12-31 16:40 UTC+7
+
+**Media root alignment**
+
+- Backend: resolve `/media/*` root from `THUMBNAIL_OUTPUT_DIR`/`CLIP_OUTPUT_DIR` so files under `../output` are served.
+
+### 2025-12-31 15:56 UTC+7
+
+**Serve rendered thumbnails**
+
+- Backend: expose `/media/*` to serve files under `output/`.
+- Frontend: map `thumbnail_path` to `/media/` so rendered segment thumbnails replace the preview image.
+
+### 2025-12-31 15:38 UTC+7
+
+**Batch render UI wiring**
+
+- Frontend: send segment queues to `/api/clip/batch` with per-segment thumbnail timestamps.
+- Frontend: show per-segment thumbnail timestamp + render status details in the queue.
+
 ### 2025-12-31 15:21 UTC+7
 
 **Batch clip rendering**

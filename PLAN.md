@@ -17,6 +17,14 @@
 - [x] Manual segment add/edit/delete.
 - [ ] Segment reordering and inline time edits.
 - [ ] Wire output settings to backend payload.
+- [ ] Persist output settings (per user/session).
+- [ ] Output settings: preset + vertical/crop method wiring.
+- [ ] Output settings: captions toggle + caption style wiring.
+- [ ] Output settings: font size + highlight color wiring.
+- [ ] Output settings: language selection wiring.
+- [ ] Output settings: background music toggle placeholder (no backend yet).
+- [ ] Output settings: output/thumbnail folder input wiring.
+- [ ] Output settings: validation + helper messages.
 
 ## Phase 3: Reliability + Ops
 - [x] Proxy/cookie handling and redacted logging.
@@ -26,3 +34,9 @@
 ## Phase 4: Release + QA
 - [ ] End-to-end smoke checklist.
 - [ ] Performance checks for large videos.
+
+## Phase 5: Automation + Bot Ops
+- [ ] Scheduler: fetch trending content every 6 hours.
+- [ ] Telegram bot: deliver trending list and accept user picks.
+- [ ] Processing pipeline: clip selected content and post to social media.
+- [ ] Task notifications: send every job status update to Telegram.

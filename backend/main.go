@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,8 +49,10 @@ func main() {
 	// Clip Endpoint
 	mux.HandleFunc("/api/clip", clipHandler.Clip)
 	mux.HandleFunc("/api/clip/batch", clipHandler.ClipBatch)
+	mux.HandleFunc("/api/thumbnail/batch", clipHandler.ThumbnailBatch)
 	mux.HandleFunc("/api/preview", clipHandler.Preview)
 	mux.HandleFunc("/proxy-check", clipHandler.ProxyCheck)
+	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(resolveMediaRoot()))))
 
 	// Middleware Chain
 	handler := enableCORS(mux)
@@ -152,4 +155,18 @@ func loadEnvFiles() []string {
 	}
 
 	return loaded
+}
+
+func resolveMediaRoot() string {
+	thumbDir := strings.TrimSpace(os.Getenv("THUMBNAIL_OUTPUT_DIR"))
+	if thumbDir != "" {
+		return filepath.Clean(filepath.Dir(thumbDir))
+	}
+
+	clipDir := strings.TrimSpace(os.Getenv("CLIP_OUTPUT_DIR"))
+	if clipDir != "" {
+		return filepath.Clean(filepath.Dir(clipDir))
+	}
+
+	return "output"
 }

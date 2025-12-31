@@ -127,6 +127,26 @@ func buildClipBaseName(clipID string, ts int64, index int) string {
 	return base + ".mp4"
 }
 
+func buildThumbnailBaseName(clipID string, ts int64, index int) string {
+	name := strings.TrimSuffix(buildClipBaseName(clipID, ts, index), ".mp4")
+	return name + ".jpg"
+}
+
+func resolveThumbnailAt(duration float64, override *float64) float64 {
+	thumbAt := defaultThumbnailTimestamp
+	if override != nil {
+		thumbAt = *override
+	}
+	if thumbAt < 0 {
+		thumbAt = defaultThumbnailTimestamp
+	}
+	maxThumbAt := math.Max(duration-0.05, 0)
+	if thumbAt > maxThumbAt {
+		thumbAt = maxThumbAt
+	}
+	return thumbAt
+}
+
 func (h *Handler) getVideoStream(videoURL string) (*youtube.Video, string, string, string, proxyConfig, error) {
 	userAgent := resolveUserAgent()
 	cookie := resolveYouTubeCookie(h.Logger)
@@ -392,17 +412,7 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		thumbAt := defaultThumbnailTimestamp
-		if segment.ThumbnailAt != nil {
-			thumbAt = *segment.ThumbnailAt
-		}
-		if thumbAt < 0 {
-			thumbAt = defaultThumbnailTimestamp
-		}
-		maxThumbAt := math.Max(duration-0.05, 0)
-		if thumbAt > maxThumbAt {
-			thumbAt = maxThumbAt
-		}
+		thumbAt := resolveThumbnailAt(duration, segment.ThumbnailAt)
 		result.ThumbnailAt = thumbAt
 
 		baseName := buildClipBaseName(clipID, batchTimestamp, segmentIndex)
