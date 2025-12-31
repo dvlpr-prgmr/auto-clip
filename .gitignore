@@ -5,3 +5,9 @@ npm-debug.log*
 clips
 /.netlify
 frontend/dist
+logs
+backend/logs
+backend/youtube*
+backend/server
+output
+**/server

@@ -13,7 +13,7 @@ const apiBase = computed(() => {
 });
 
 const form = reactive({
-  url: '',
+  url: 'https://www.youtube.com/watch?v=2-Z6H2bgrnM',
   start: 0,
   end: 30,
 });
@@ -23,10 +23,18 @@ const status = reactive({
   type: 'idle',
   message: '',
 });
+const result = reactive({
+  outputPath: '',
+  thumbnailPath: '',
+  thumbnailError: '',
+});
 
 async function handleSubmit() {
   status.type = 'idle';
   status.message = '';
+  result.outputPath = '';
+  result.thumbnailPath = '';
+  result.thumbnailError = '';
   isSubmitting.value = true;
 
   try {
@@ -53,16 +61,13 @@ async function handleSubmit() {
       throw new Error(detail);
     }
 
-    const blob = await response.blob();
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = 'clip.mp4';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+    const resultPayload = await response.json();
+    result.outputPath = resultPayload.output_path || '';
+    result.thumbnailPath = resultPayload.thumbnail_path || '';
+    result.thumbnailError = resultPayload.thumbnail_error || '';
 
     status.type = 'success';
-    status.message = 'Clip ready! The download should begin automatically.';
+    status.message = 'Clip saved on the server.';
   } catch (error) {
     status.type = 'error';
     status.message = error.message || 'Unexpected error generating clip.';
@@ -133,7 +138,7 @@ async function handleSubmit() {
           </svg>
           {{ isSubmitting ? 'Generating...' : 'Generate clip' }}
         </button>
-        <p class="text-xs text-slate-400">Response is downloaded as <code>clip.mp4</code>.</p>
+        <p class="text-xs text-slate-400">Result is saved on the server.</p>
       </div>
     </form>
 
@@ -146,6 +151,18 @@ async function handleSubmit() {
       <span v-else-if="status.type === 'error'" aria-hidden="true">⚠️</span>
       <span v-else aria-hidden="true">ℹ️</span>
       <span>{{ status.message }}</span>
+    </div>
+
+    <div v-if="result.outputPath" class="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+      <p class="text-slate-200">
+        Clip saved at <code>{{ result.outputPath }}</code>
+      </p>
+      <p v-if="result.thumbnailPath" class="mt-1">
+        Thumbnail saved at <code>{{ result.thumbnailPath }}</code>
+      </p>
+      <p v-else-if="result.thumbnailError" class="mt-1 text-amber-300">
+        Thumbnail failed: {{ result.thumbnailError }}
+      </p>
     </div>
   </div>
 </template>
