@@ -47,6 +47,7 @@ func main() {
 
 	// Clip Endpoint
 	mux.HandleFunc("/api/clip", clipHandler.Clip)
+	mux.HandleFunc("/api/preview", clipHandler.Preview)
 	mux.HandleFunc("/proxy-check", clipHandler.ProxyCheck)
 
 	// Middleware Chain

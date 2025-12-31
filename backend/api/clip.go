@@ -76,27 +76,7 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Get Stream URL using go-youtube library
 	userAgent := resolveUserAgent()
-	cookie := strings.TrimSpace(os.Getenv("YOUTUBE_COOKIE"))
-	if cookie == "" {
-		// Allow loading cookie from file when env string is not provided
-		cookieFile := strings.TrimSpace(os.Getenv("YOUTUBE_COOKIE_FILE"))
-		if cookieFile != "" {
-			content, err := os.ReadFile(cookieFile)
-			if err != nil {
-				h.Logger.Error("Failed to read cookie file", map[string]string{
-					"Error": err.Error(),
-					"Path":  cookieFile,
-				})
-			} else {
-				rawCookie := strings.TrimSpace(string(content))
-				if converted, ok := convertNetscapeCookieToHeader(rawCookie); ok {
-					cookie = converted
-				} else {
-					cookie = rawCookie
-				}
-			}
-		}
-	}
+	cookie := resolveYouTubeCookie(h.Logger)
 
 	defaultHeaders := http.Header{}
 	defaultHeaders.Set("User-Agent", userAgent)
@@ -168,7 +148,30 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outputPath := filepath.Join(outputDir, fmt.Sprintf("clip-%d.mp4", time.Now().UnixNano()))
+	clipID := strings.TrimSpace(video.ID)
+	if clipID != "" {
+		clipID = strings.Map(func(r rune) rune {
+			switch {
+			case r >= 'a' && r <= 'z':
+				return r
+			case r >= 'A' && r <= 'Z':
+				return r
+			case r >= '0' && r <= '9':
+				return r
+			case r == '-' || r == '_':
+				return r
+			default:
+				return -1
+			}
+		}, clipID)
+	}
+
+	ts := time.Now().UnixNano()
+	baseName := fmt.Sprintf("clip-%d.mp4", ts)
+	if clipID != "" {
+		baseName = fmt.Sprintf("clip-%s-%d.mp4", clipID, ts)
+	}
+	outputPath := filepath.Join(outputDir, baseName)
 
 	// 4. Render via ffmpeg
 	// -ss before -i is crucial for fast seeking.
