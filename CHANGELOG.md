@@ -1,5 +1,19 @@
 # Changelog
 
+### 2025-12-31 17:37 UTC+7
+
+**Segment inline edits + reorder**
+
+- Frontend: add inline start/end editing controls on segment cards.
+- Frontend: add move up/down controls to reorder segments.
+- Docs: mark segment reordering + inline edits as complete in `PLAN.md`.
+
+### 2025-12-31 17:29 UTC+7
+
+**Hide thumbnail path text**
+
+- Frontend: remove per-segment thumbnail path line from the queue cards.
+
 ### 2025-12-31 17:17 UTC+7
 
 **Plan: output settings wiring**

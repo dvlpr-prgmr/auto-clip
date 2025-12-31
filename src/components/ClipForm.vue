@@ -104,6 +104,12 @@ const autoSplitApplied = ref(false);
 const segmentsMode = ref('single');
 const selectedSegmentId = ref('');
 const editingSegmentId = ref('');
+const inlineEditId = ref('');
+const inlineEdit = reactive({
+  start: 0,
+  end: 0,
+});
+const inlineEditError = ref('');
 const estimatedClips = computed(() => {
   if (segmentDuration.value <= 0) return 0;
   if (autoSplit.method === 'duration') {
@@ -295,6 +301,81 @@ function selectSegment(segment) {
   selectedSegmentId.value = segment.id;
 }
 
+function startInlineEdit(segment) {
+  if (!segment) return;
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  inlineEdit.start = Number(segment.start.toFixed(1));
+  inlineEdit.end = Number(segment.end.toFixed(1));
+  inlineEditError.value = '';
+  inlineEditId.value = segment.id;
+  selectedSegmentId.value = segment.id;
+}
+
+function cancelInlineEdit() {
+  inlineEditId.value = '';
+  inlineEditError.value = '';
+}
+
+function applyInlineEdit(segment) {
+  if (!segment || inlineEditId.value !== segment.id) return;
+  const start = Number(inlineEdit.start);
+  const end = Number(inlineEdit.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    inlineEditError.value = 'Start/end must be valid numbers.';
+    return;
+  }
+  if (start < 0) {
+    inlineEditError.value = 'Start time must be >= 0.';
+    return;
+  }
+  if (end <= start) {
+    inlineEditError.value = 'End time must be greater than start time.';
+    return;
+  }
+
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  segments.value = reindexSegments(
+    segments.value.map((item) => {
+      if (item.id !== segment.id) return item;
+      const duration = Math.max(end - start, 0);
+      return {
+        ...item,
+        start,
+        end,
+        duration,
+        thumbnailAt: resolveThumbnailAt(duration, item.thumbnailAt),
+        thumbnailUrl: preview.thumbnailUrl || item.thumbnailUrl || '',
+        outputPath: '',
+        thumbnailPath: '',
+        thumbnailError: '',
+        renderDuration: '',
+        renderError: '',
+      };
+    }),
+  );
+
+  inlineEditId.value = '';
+  inlineEditError.value = '';
+  scheduleThumbnailRefresh();
+}
+
+function moveSegment(segment, offset) {
+  if (!segment || !Number.isFinite(offset)) return;
+  const index = segments.value.findIndex((item) => item.id === segment.id);
+  if (index === -1) return;
+  const target = index + offset;
+  if (target < 0 || target >= segments.value.length) return;
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  const next = [...segments.value];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved);
+  segments.value = reindexSegments(next);
+  selectedSegmentId.value = segment.id;
+}
+
 function getRange() {
   const start = Math.max(Number(form.start) || 0, 0);
   const end = Math.max(Number(form.end) || 0, 0);
@@ -454,6 +535,9 @@ function deleteSegment(segment) {
   if (selectedSegmentId.value === segment.id) {
     selectedSegmentId.value = '';
   }
+  if (inlineEditId.value === segment.id) {
+    cancelInlineEdit();
+  }
   scheduleThumbnailRefresh();
 }
 
@@ -463,6 +547,7 @@ function clearAllSegments() {
   segments.value = [];
   selectedSegmentId.value = '';
   editingSegmentId.value = '';
+  cancelInlineEdit();
 }
 
 let previewTimer = null;
@@ -942,11 +1027,47 @@ async function handleSubmit() {
                   <p v-if="segment.renderError" class="text-[10px] text-rose-300 break-all">
                     Render error: {{ segment.renderError }}
                   </p>
-                  <p v-if="segment.thumbnailPath" class="text-[10px] text-slate-500 break-all">
-                    Thumb: {{ segment.thumbnailPath }}
-                  </p>
-                  <p v-else-if="segment.thumbnailError" class="text-[10px] text-amber-300 break-all">
+                  <p v-if="segment.thumbnailError" class="text-[10px] text-amber-300 break-all">
                     Thumb error: {{ segment.thumbnailError }}
+                  </p>
+                  <div v-if="inlineEditId === segment.id" class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1">
+                      Start
+                      <input
+                        v-model.number="inlineEdit.start"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        class="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-100"
+                      />
+                    </label>
+                    <label class="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-2 py-1">
+                      End
+                      <input
+                        v-model.number="inlineEdit.end"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        class="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-100"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      class="rounded-md border border-emerald-500/50 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200 transition hover:border-emerald-400 hover:text-emerald-100"
+                      @click.stop="applyInlineEdit(segment)"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-md border border-slate-800 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300 transition hover:border-slate-600 hover:text-slate-200"
+                      @click.stop="cancelInlineEdit"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p v-if="inlineEditId === segment.id && inlineEditError" class="text-[10px] text-rose-300">
+                    {{ inlineEditError }}
                   </p>
                 </div>
               </div>
@@ -954,10 +1075,28 @@ async function handleSubmit() {
                 <button
                   type="button"
                   class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200"
-                  @click.stop="openEditSegment(segment)"
+                  @click.stop="startInlineEdit(segment)"
                   aria-label="Edit segment"
                 >
                   ✎
+                </button>
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="segment.index === 1"
+                  @click.stop="moveSegment(segment, -1)"
+                  aria-label="Move segment up"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="segment.index === segments.length"
+                  @click.stop="moveSegment(segment, 1)"
+                  aria-label="Move segment down"
+                >
+                  ▼
                 </button>
                 <button
                   type="button"

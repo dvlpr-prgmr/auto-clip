@@ -15,7 +15,7 @@
 - [x] Auto-preview metadata on URL input.
 - [x] Auto-split UI with queue rendering.
 - [x] Manual segment add/edit/delete.
-- [ ] Segment reordering and inline time edits.
+- [x] Segment reordering and inline time edits.
 - [ ] Wire output settings to backend payload.
 - [ ] Persist output settings (per user/session).
 - [ ] Output settings: preset + vertical/crop method wiring.
