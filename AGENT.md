@@ -1,5 +1,27 @@
 # Agent Notes for auto-clip
 
+## Document Sync Rules (Required)
+
+### Documents that must be kept in sync
+
+| Document | When to update | Contents |
+|------|---------|------|
+| `CHANGELOG.md` | After code changes | Update log (with timestamp), progress status |
+| `AGENT.md` | When rules change | Project rules and workflow notes |
+
+### Timestamp format
+
+All update logs must include a timestamp:
+```
+### 2025-12-25 20:27 UTC+8
+```
+
+### Context docs
+
+At the start of a new session, read:
+1. `AGENT.md` - project rules
+2. `PLAN.md` - development plan and progress
+
 ## Gambaran Umum
 - Monorepo: frontend Vue 3 + Vite + Tailwind di root; backend Go HTTP server di `backend/`.
 - Tujuan: membuat klip MP4 dari URL YouTube (POST `/api/clip`) dan health check (GET `/health`).
@@ -28,4 +50,3 @@
 ## Hal yang Perlu Diwaspadai
 - Dependensi eksternal `ffmpeg` wajib tersedia di runtime backend Go.
 - CORS di backend Go diizinkan untuk semua origin; sesuaikan untuk produksi.
-- Setiap perubahan dari request prompt: catat ringkasnya di file log markdown (mis. `logs/YYYY-MM-DD.md`) dengan apa yang diubah dan alasan secara detail mirip git diff.

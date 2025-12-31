@@ -43,6 +43,19 @@ const previewStatus = reactive({
   state: 'idle',
   error: '',
 });
+const previewStatusLabel = computed(() => (previewStatus.state === 'ready' ? 'ready' : 'not ready'));
+const previewStatusClass = computed(() => {
+  if (previewStatus.state === 'ready') {
+    return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200';
+  }
+  if (previewStatus.state === 'loading') {
+    return 'border-sky-500/40 bg-sky-500/10 text-sky-200';
+  }
+  if (previewStatus.state === 'error') {
+    return 'border-rose-500/40 bg-rose-500/10 text-rose-200';
+  }
+  return 'border-slate-800 bg-slate-900/60 text-slate-400';
+});
 const endTouched = ref(false);
 const segmentDuration = computed(() => {
   const diff = Number(form.end) - Number(form.start);
@@ -59,6 +72,8 @@ const maxClipDuration = computed(() => {
   return 0;
 });
 const showAutoSplit = ref(false);
+const showAddClip = ref(false);
+const addClipError = ref('');
 const autoSplitMethods = [
   { value: 'duration', label: 'By duration (every N seconds)' },
   { value: 'count', label: 'By count (split into N clips)' },
@@ -71,8 +86,15 @@ const autoSplit = reactive({
   min: 60,
   max: 180,
 });
+const manualClip = reactive({
+  start: 0,
+  end: 0,
+});
 const segments = ref([]);
 const autoSplitApplied = ref(false);
+const segmentsMode = ref('single');
+const selectedSegmentId = ref('');
+const editingSegmentId = ref('');
 const estimatedClips = computed(() => {
   if (segmentDuration.value <= 0) return 0;
   if (autoSplit.method === 'duration') {
@@ -105,6 +127,44 @@ function closeAutoSplit() {
   showAutoSplit.value = false;
 }
 
+function openAddClip() {
+  const range = getRange();
+  const last = segments.value.length ? segments.value[segments.value.length - 1] : null;
+  let start = last ? last.end : range.start;
+  let end = last ? last.end + Math.max(last.duration, 1) : range.end;
+  if (range.end > range.start && end > range.end) {
+    end = range.end;
+  }
+  manualClip.start = Number(start.toFixed(1));
+  manualClip.end = Number(Math.max(end, start + 1).toFixed(1));
+  addClipError.value = '';
+  editingSegmentId.value = '';
+  showAddClip.value = true;
+}
+
+function closeAddClip() {
+  showAddClip.value = false;
+  addClipError.value = '';
+  editingSegmentId.value = '';
+}
+
+function openEditSegment(segment) {
+  if (!segment) return;
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  manualClip.start = Number(segment.start.toFixed(1));
+  manualClip.end = Number(segment.end.toFixed(1));
+  addClipError.value = '';
+  editingSegmentId.value = segment.id;
+  selectedSegmentId.value = segment.id;
+  showAddClip.value = true;
+}
+
+function selectSegment(segment) {
+  if (!segment) return;
+  selectedSegmentId.value = segment.id;
+}
+
 function getRange() {
   const start = Math.max(Number(form.start) || 0, 0);
   const end = Math.max(Number(form.end) || 0, 0);
@@ -120,6 +180,15 @@ function createSegment(start, end, index) {
     duration: Math.max(end - start, 0),
     thumbnailUrl: preview.thumbnailUrl || '',
   };
+}
+
+function reindexSegments(items) {
+  return items.map((segment, idx) => ({
+    ...segment,
+    index: idx + 1,
+    duration: Math.max(segment.end - segment.start, 0),
+    thumbnailUrl: preview.thumbnailUrl || segment.thumbnailUrl || '',
+  }));
 }
 
 function buildSegments(rangeStart, rangeEnd) {
@@ -155,17 +224,95 @@ function buildSegments(rangeStart, rangeEnd) {
 
 function refreshSegments() {
   const range = getRange();
-  if (!autoSplitApplied.value) {
+  if (segmentsMode.value === 'auto') {
+    segments.value = buildSegments(range.start, range.end);
+  } else if (segmentsMode.value === 'manual') {
+    segments.value = reindexSegments(segments.value);
+  } else {
     segments.value = range.end > range.start ? [createSegment(range.start, range.end, 1)] : [];
-    return;
   }
-  segments.value = buildSegments(range.start, range.end);
+
+  if (selectedSegmentId.value && !segments.value.some((segment) => segment.id === selectedSegmentId.value)) {
+    selectedSegmentId.value = '';
+  }
 }
 
 function applyAutoSplit() {
+  segmentsMode.value = 'auto';
   autoSplitApplied.value = true;
   refreshSegments();
   showAutoSplit.value = false;
+}
+
+function addManualClip() {
+  const start = Number(manualClip.start);
+  const end = Number(manualClip.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    addClipError.value = 'Start/end must be valid numbers.';
+    return;
+  }
+  if (end <= start) {
+    addClipError.value = 'End time must be greater than start time.';
+    return;
+  }
+
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  if (editingSegmentId.value) {
+    segments.value = reindexSegments(
+      segments.value.map((segment) =>
+        segment.id === editingSegmentId.value
+          ? {
+              ...segment,
+              start,
+              end,
+              duration: Math.max(end - start, 0),
+              thumbnailUrl: preview.thumbnailUrl || segment.thumbnailUrl || '',
+            }
+          : segment,
+      ),
+    );
+    selectedSegmentId.value = editingSegmentId.value;
+  } else {
+    const nextIndex = segments.value.length + 1;
+    const next = createSegment(start, end, nextIndex);
+    segments.value = reindexSegments([...segments.value, next]);
+    selectedSegmentId.value = next.id;
+  }
+  editingSegmentId.value = '';
+  showAddClip.value = false;
+}
+
+function duplicateSegmentShift() {
+  const range = getRange();
+  const last = segments.value.length ? segments.value[segments.value.length - 1] : null;
+  const base = last || createSegment(range.start, range.end, 1);
+  const duration = Math.max(base.duration, 1);
+  const start = base.end;
+  let end = start + duration;
+  if (range.end > range.start && end > range.end) {
+    end = range.end;
+  }
+  if (end <= start) {
+    addClipError.value = 'Cannot duplicate beyond the selected range.';
+    return;
+  }
+
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  const next = createSegment(start, end, segments.value.length + 1);
+  segments.value = reindexSegments([...segments.value, next]);
+  selectedSegmentId.value = next.id;
+}
+
+function deleteSegment(segment) {
+  if (!segment) return;
+  segmentsMode.value = 'manual';
+  autoSplitApplied.value = false;
+  segments.value = reindexSegments(segments.value.filter((item) => item.id !== segment.id));
+  if (selectedSegmentId.value === segment.id) {
+    selectedSegmentId.value = '';
+  }
 }
 
 let previewTimer = null;
@@ -373,42 +520,28 @@ async function handleSubmit() {
         </div>
 
         <div class="mt-4 rounded-xl border border-slate-800 bg-[#0c141f] p-4">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold text-slate-100">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <p class="text-base font-semibold leading-snug text-slate-100 md:text-lg">
                 {{ preview.title || 'Waiting for URL...' }}
               </p>
-              <p class="text-xs text-slate-400">
-                <template v-if="previewStatus.state === 'ready'">
-                  Duration {{ preview.durationLabel || '—' }}{{ preview.durationSeconds ? ` (${preview.durationSeconds}s)` : '' }} ·
-                  Resolution {{ preview.width && preview.height ? `${preview.width}x${preview.height}` : '—' }} ·
-                  {{ preview.fps ? `${preview.fps} fps` : '—' }} ·
-                  {{ preview.sizeLabel || 'Size —' }}
-                </template>
-                <template v-else-if="previewStatus.state === 'loading'">
+              <p class="text-xs text-slate-400 md:text-sm">
+                <template v-if="previewStatus.state === 'loading'">
                   Detecting video metadata...
                 </template>
                 <template v-else-if="previewStatus.state === 'error'">
                   {{ previewStatus.error }}
                 </template>
-                <template v-else>
+                <template v-else-if="previewStatus.state === 'idle'">
                   Paste a YouTube URL to auto-detect duration and resolution.
                 </template>
               </p>
             </div>
             <span
-              class="rounded-full border px-3 py-1 text-xs"
-              :class="previewStatus.state === 'ready'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                : previewStatus.state === 'loading'
-                  ? 'border-sky-500/40 bg-sky-500/10 text-sky-200'
-                  : 'border-slate-800 bg-slate-900/60 text-slate-400'"
+              class="self-start rounded-full border px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.32em]"
+              :class="previewStatusClass"
             >
-              {{ previewStatus.state === 'ready'
-                ? 'Ready'
-                : previewStatus.state === 'loading'
-                  ? 'Detecting'
-                  : 'Idle' }}
+              {{ previewStatusLabel }}
             </span>
           </div>
           <div class="mt-3 flex flex-wrap gap-2">
@@ -423,6 +556,9 @@ async function handleSubmit() {
             </span>
             <span class="rounded-lg bg-slate-800/70 px-3 py-1 text-xs text-slate-200">
               {{ preview.quality ? preview.quality : 'MP4 + AAC' }}
+            </span>
+            <span class="rounded-lg bg-slate-800/70 px-3 py-1 text-xs text-slate-200">
+              {{ preview.sizeLabel || 'Size —' }}
             </span>
           </div>
           <div v-if="preview.thumbnailUrl" class="mt-4 overflow-hidden rounded-lg border border-slate-800">
@@ -493,7 +629,20 @@ async function handleSubmit() {
 
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
           <div class="flex items-center gap-2">
-            <button type="button" disabled class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-500">Add clip</button>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200"
+              @click="openAddClip"
+            >
+              Add clip
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200"
+              @click="duplicateSegmentShift"
+            >
+              Duplicate + shift
+            </button>
             <button
               type="button"
               class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200 transition hover:border-emerald-400 hover:text-emerald-100"
@@ -502,7 +651,7 @@ async function handleSubmit() {
               Auto-split
             </button>
           </div>
-          <span class="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-400">Multi-segment soon</span>
+          <span class="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-400">Manual queue</span>
         </div>
 
         <div class="mt-4 space-y-3">
@@ -510,8 +659,9 @@ async function handleSubmit() {
             <div
               v-for="segment in segments"
               :key="segment.id"
-              class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4"
-              :class="segment.index === 1 ? 'border-emerald-500/30 bg-emerald-500/5' : ''"
+              class="group relative flex items-center gap-4 overflow-visible rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:border-emerald-500/30 hover:bg-emerald-500/5"
+              :class="segment.id === selectedSegmentId ? 'border-emerald-500/50 bg-emerald-500/10' : ''"
+              @click="selectSegment(segment)"
             >
               <div class="flex items-center gap-3">
                 <div class="h-12 w-20 overflow-hidden rounded-lg border border-slate-800 bg-slate-900/70">
@@ -528,13 +678,32 @@ async function handleSubmit() {
                 <div>
                   <p class="text-sm font-semibold text-slate-100">Segment {{ String(segment.index).padStart(2, '0') }}</p>
                   <p class="text-xs text-slate-400">
-                    {{ formatTime(segment.start) }} - {{ formatTime(segment.end) }}
+                    {{ formatTime(segment.start) }} - {{ formatTime(segment.end) }} (length {{ formatTime(segment.duration) }})
                   </p>
                 </div>
               </div>
-              <div class="text-right">
-                <p class="text-xs text-slate-400">Length</p>
-                <p class="text-sm font-semibold text-emerald-200">{{ formatTime(segment.duration) }}</p>
+              <div class="absolute -right-3 -top-3 flex items-center gap-2 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200"
+                  @click.stop="openEditSegment(segment)"
+                  aria-label="Edit segment"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-rose-400 hover:text-rose-200"
+                  @click.stop="deleteSegment(segment)"
+                  aria-label="Delete segment"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4">
+                    <path
+                      fill="currentColor"
+                      d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z"
+                    />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -590,6 +759,59 @@ async function handleSubmit() {
       <p v-else-if="result.thumbnailError" class="mt-1 text-amber-300">
         Thumbnail failed: {{ result.thumbnailError }}
       </p>
+    </div>
+
+    <div
+      v-if="showAddClip"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur"
+      @click.self="closeAddClip"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-[#0f1724] p-6 shadow-2xl shadow-black/40 animate-fade-rise">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Manual Clip</p>
+            <h3 class="text-lg font-semibold text-slate-100">
+              {{ editingSegmentId ? 'Edit segment' : 'Add a segment' }}
+            </h3>
+          </div>
+          <button type="button" class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-300" @click="closeAddClip">
+            Close
+          </button>
+        </div>
+
+        <div class="mt-4 grid gap-3 text-xs text-slate-300">
+          <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+            Start (sec)
+            <input
+              v-model.number="manualClip.start"
+              type="number"
+              min="0"
+              step="0.1"
+              class="w-24 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+            />
+          </label>
+          <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+            End (sec)
+            <input
+              v-model.number="manualClip.end"
+              type="number"
+              min="0"
+              step="0.1"
+              class="w-24 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+            />
+          </label>
+          <p v-if="addClipError" class="text-xs text-rose-300">{{ addClipError }}</p>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <button type="button" class="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-2 text-xs text-slate-300" @click="closeAddClip">
+            Cancel
+          </button>
+          <button type="button" class="rounded-lg bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950" @click="addManualClip">
+            {{ editingSegmentId ? 'Save changes' : 'Add clip' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div
