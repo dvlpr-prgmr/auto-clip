@@ -14,7 +14,7 @@ const apiBase = computed(() => {
 });
 
 const form = reactive({
-  url: 'https://www.youtube.com/watch?v=2-Z6H2bgrnM',
+  url: 'https://www.youtube.com/watch?v=ghjVUm0xL9Q',
   start: 0,
   end: 30,
 });
@@ -34,7 +34,15 @@ const batchSummary = reactive({
   success: 0,
   failed: 0,
 });
+const captionStatus = reactive({
+  state: 'idle',
+  message: '',
+});
 const thumbnailStatus = reactive({
+  state: 'idle',
+  message: '',
+});
+const sceneStatus = reactive({
   state: 'idle',
   message: '',
 });
@@ -88,6 +96,7 @@ const autoSplitMethods = [
   { value: 'duration', label: 'By duration (every N seconds)' },
   { value: 'count', label: 'By count (split into N clips)' },
   { value: 'silence', label: 'By silence detection' },
+  { value: 'scene', label: 'By scene detection' },
 ];
 const autoSplit = reactive({
   method: autoSplitMethods[0].value,
@@ -95,6 +104,10 @@ const autoSplit = reactive({
   count: 10,
   min: 60,
   max: 180,
+  sceneThreshold: 0.4,
+  sceneMinDuration: 2,
+  sceneMaxDuration: 20,
+  sceneMaxSegments: 60,
 });
 const manualClip = reactive({
   start: 0,
@@ -120,6 +133,9 @@ const estimatedClips = computed(() => {
   if (autoSplit.method === 'count') {
     return Math.max(Number(autoSplit.count) || 0, 0);
   }
+  if (autoSplit.method === 'scene') {
+    return 0;
+  }
   const maxInterval = Math.max(Number(autoSplit.max) || 1, 1);
   return Math.ceil(segmentDuration.value / maxInterval);
 });
@@ -132,6 +148,14 @@ const defaultThumbnailAt = 0.2;
 let thumbnailTimer = null;
 let thumbnailRequestId = 0;
 let thumbnailStatusTimer = null;
+
+const sceneSensitivityLabel = computed(() => {
+  const value = Number(autoSplit.sceneThreshold);
+  if (!Number.isFinite(value)) return 'Medium';
+  if (value <= 0.3) return 'Low';
+  if (value <= 0.6) return 'Medium';
+  return 'High';
+});
 
 function formatTime(value) {
   const seconds = Number(value);
@@ -384,7 +408,7 @@ function getRange() {
   return end > start ? { start, end } : { start, end: start };
 }
 
-function createSegment(start, end, index) {
+function createSegment(start, end, index, thumbnailAt) {
   const duration = Math.max(end - start, 0);
   return {
     id: `${index}-${start}-${end}`,
@@ -393,7 +417,7 @@ function createSegment(start, end, index) {
     end,
     duration,
     thumbnailUrl: preview.thumbnailUrl || '',
-    thumbnailAt: resolveThumbnailAt(duration),
+    thumbnailAt: resolveThumbnailAt(duration, thumbnailAt),
     outputPath: '',
     thumbnailPath: '',
     thumbnailError: '',
@@ -458,7 +482,84 @@ function refreshSegments() {
   }
 }
 
-function applyAutoSplit() {
+async function detectScenes() {
+  const range = getRange();
+  const payloadUrl = form.url.trim();
+  if (!outputSettings.autoSceneDetection) {
+    sceneStatus.state = 'error';
+    sceneStatus.message = 'Enable auto scene detection in Output Settings.';
+    return;
+  }
+  if (!payloadUrl || range.end <= range.start) {
+    sceneStatus.state = 'error';
+    sceneStatus.message = 'Set a valid URL and range first.';
+    return;
+  }
+
+  sceneStatus.state = 'loading';
+  sceneStatus.message = 'Detecting scenes...';
+
+  try {
+    const payload = {
+      url: payloadUrl,
+      start: range.start,
+      end: range.end,
+      threshold: Number(autoSplit.sceneThreshold) || 0.4,
+      min_duration: Number(autoSplit.sceneMinDuration) || 0,
+      max_duration: Number(autoSplit.sceneMaxDuration) || 0,
+      max_segments: Number(autoSplit.sceneMaxSegments) || 0,
+    };
+    const response = await fetch(`${apiBase.value}/api/scenes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let detail = 'Failed to detect scenes.';
+      try {
+        const errorPayload = await response.json();
+        detail = errorPayload.error || errorPayload.detail || detail;
+      } catch (e) {
+        // Ignore JSON parse errors.
+      }
+      throw new Error(detail);
+    }
+
+    const resultPayload = await response.json();
+    const segmentsPayload = Array.isArray(resultPayload.segments) ? resultPayload.segments : [];
+    if (!segmentsPayload.length) {
+      sceneStatus.state = 'error';
+      sceneStatus.message = 'No scenes detected.';
+      return;
+    }
+
+    segmentsMode.value = 'manual';
+    autoSplitApplied.value = true;
+    segments.value = reindexSegments(
+      segmentsPayload.map((segment, index) =>
+        createSegment(segment.start, segment.end, index + 1, segment.thumbnail_at),
+      ),
+    );
+
+    sceneStatus.state = 'success';
+    sceneStatus.message = `Detected ${segmentsPayload.length} scenes.`;
+    scheduleThumbnailRefresh();
+  } catch (error) {
+    sceneStatus.state = 'error';
+    sceneStatus.message = error.message || 'Scene detection failed.';
+  }
+}
+
+async function applyAutoSplit() {
+  if (autoSplit.method === 'scene') {
+    await detectScenes();
+    if (sceneStatus.state === 'success') {
+      showAutoSplit.value = false;
+    }
+    return;
+  }
+
   segmentsMode.value = 'auto';
   autoSplitApplied.value = true;
   refreshSegments();
@@ -671,6 +772,15 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => outputSettings.autoSceneDetection,
+  (enabled) => {
+    if (!enabled && autoSplit.method === 'scene') {
+      autoSplit.method = 'duration';
+    }
+  },
+);
+
 refreshSegments();
 
 function clearSegmentRenderData() {
@@ -702,6 +812,14 @@ function buildOutputSettingsPayload() {
     aspect_ratio: outputSettings.aspectRatio,
     aspect_mode: outputSettings.aspectMode,
     crop_method: outputSettings.cropMethod,
+    captions: outputSettings.captions,
+    caption_style: outputSettings.captionStyle,
+    caption_source: outputSettings.captionSource,
+    caption_language: outputSettings.captionLanguage,
+    caption_format: outputSettings.captionFormat,
+    caption_text: outputSettings.captionText,
+    font_size: outputSettings.fontSize,
+    highlight_color: outputSettings.highlight,
   };
 }
 
@@ -714,6 +832,8 @@ async function handleSubmit() {
   batchSummary.total = 0;
   batchSummary.success = 0;
   batchSummary.failed = 0;
+  captionStatus.state = 'idle';
+  captionStatus.message = '';
   clearSegmentRenderData();
   isSubmitting.value = true;
 
@@ -741,6 +861,10 @@ async function handleSubmit() {
           detail = errorPayload.error || errorPayload.detail || detail;
         } catch (e) {
           // If parsing fails, fall back to generic message.
+        }
+        if (outputSettings.captions) {
+          captionStatus.state = 'error';
+          captionStatus.message = detail;
         }
         throw new Error(detail);
       }
@@ -795,6 +919,10 @@ async function handleSubmit() {
         } catch (e) {
           // If parsing fails, fall back to generic message.
         }
+        if (outputSettings.captions) {
+          captionStatus.state = 'error';
+          captionStatus.message = detail;
+        }
         throw new Error(detail);
       }
 
@@ -809,6 +937,10 @@ async function handleSubmit() {
   } catch (error) {
     status.type = 'error';
     status.message = error.message || 'Unexpected error generating clip.';
+    if (outputSettings.captions && captionStatus.state !== 'error') {
+      captionStatus.state = 'error';
+      captionStatus.message = error.message || 'Caption processing failed.';
+    }
   } finally {
     isSubmitting.value = false;
   }
@@ -981,6 +1113,14 @@ async function handleSubmit() {
             >
               Auto-split
             </button>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-200 transition hover:border-emerald-400/60 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="!outputSettings.autoSceneDetection || !isValid"
+              @click="detectScenes"
+            >
+              Scene detect
+            </button>
           </div>
           <div class="flex items-center gap-2">
             <button
@@ -1004,6 +1144,17 @@ async function handleSubmit() {
               : 'text-emerald-200'"
         >
           {{ thumbnailStatus.message }}
+        </p>
+        <p
+          v-if="sceneStatus.message"
+          class="mt-2 text-[11px]"
+          :class="sceneStatus.state === 'error'
+            ? 'text-rose-300'
+            : sceneStatus.state === 'loading'
+              ? 'text-sky-200'
+              : 'text-emerald-200'"
+        >
+          {{ sceneStatus.message }}
         </p>
 
         <div class="mt-4 space-y-3">
@@ -1173,6 +1324,17 @@ async function handleSubmit() {
       <span>{{ status.message }}</span>
     </div>
 
+    <div
+      v-if="captionStatus.message"
+      class="flex items-center gap-3 rounded-lg border p-3 text-xs"
+      :class="captionStatus.state === 'error'
+        ? 'border-amber-500/60 bg-amber-500/10 text-amber-100'
+        : 'border-slate-800 bg-slate-900 text-slate-200'"
+    >
+      <span aria-hidden="true">💬</span>
+      <span>Captions: {{ captionStatus.message }}</span>
+    </div>
+
     <div v-if="result.outputPath" class="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
       <p class="text-slate-200">
         Clip saved at <code>{{ result.outputPath }}</code>
@@ -1258,11 +1420,17 @@ async function handleSubmit() {
           <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Split method</p>
             <div class="mt-3 space-y-3">
-              <label v-for="method in autoSplitMethods" :key="method.value" class="flex items-start gap-3">
+              <label
+                v-for="method in autoSplitMethods"
+                :key="method.value"
+                class="flex items-start gap-3"
+                :class="method.value === 'scene' && !outputSettings.autoSceneDetection ? 'opacity-60' : ''"
+              >
                 <input
                   v-model="autoSplit.method"
                   type="radio"
                   :value="method.value"
+                  :disabled="method.value === 'scene' && !outputSettings.autoSceneDetection"
                   class="mt-1 h-4 w-4 border-slate-600 text-emerald-400"
                 />
                 <span>{{ method.label }}</span>
@@ -1290,6 +1458,53 @@ async function handleSubmit() {
                   step="1"
                   class="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
                   :disabled="autoSplit.method !== 'count'"
+                />
+              </label>
+            </div>
+
+            <div v-if="autoSplit.method === 'scene'" class="mt-4 grid gap-3 md:grid-cols-2 text-xs text-slate-300">
+              <label class="flex flex-col gap-2 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+                <span class="flex items-center justify-between">
+                  Sensitivity
+                  <span class="text-slate-400">{{ sceneSensitivityLabel }}</span>
+                </span>
+                <input
+                  v-model.number="autoSplit.sceneThreshold"
+                  type="range"
+                  min="0.1"
+                  max="0.9"
+                  step="0.05"
+                  class="w-full accent-emerald-400"
+                />
+              </label>
+              <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+                Min duration
+                <input
+                  v-model.number="autoSplit.sceneMinDuration"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  class="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                />
+              </label>
+              <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+                Max duration
+                <input
+                  v-model.number="autoSplit.sceneMaxDuration"
+                  type="number"
+                  min="2"
+                  step="0.5"
+                  class="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                />
+              </label>
+              <label class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0c141f] px-3 py-2">
+                Max segments
+                <input
+                  v-model.number="autoSplit.sceneMaxSegments"
+                  type="number"
+                  min="5"
+                  step="5"
+                  class="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
                 />
               </label>
             </div>
@@ -1324,8 +1539,11 @@ async function handleSubmit() {
                 />
               </label>
             </div>
-            <p class="mt-3 text-xs text-slate-400">
+            <p v-if="autoSplit.method !== 'scene'" class="mt-3 text-xs text-slate-400">
               This will create approximately <span class="font-semibold text-slate-200">{{ estimatedClips }}</span> clips.
+            </p>
+            <p v-else class="mt-3 text-xs text-slate-400">
+              Scene detection will split on visual cuts in the selected range.
             </p>
           </div>
         </div>

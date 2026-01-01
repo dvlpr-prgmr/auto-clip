@@ -1,5 +1,75 @@
 # Changelog
 
+### 2026-01-01 14:54 UTC+7
+
+**Scene detection controls**
+
+- Frontend: add sensitivity slider and min/max duration + max segments controls for scene detection.
+- Backend: honor max duration and max segments when building scene-based segments.
+
+### 2026-01-01 14:46 UTC+7
+
+**Scene detection**
+
+- Frontend: enable auto scene detection toggle and add scene detect controls.
+- Backend: add `/api/scenes` to detect scene cuts and return segments with thumbnail timestamps.
+- Docs: mark auto scene detection as complete in `PLAN.md`.
+
+### 2026-01-01 14:34 UTC+7
+
+**Subtitle safe margins**
+
+- Backend: increase ASS subtitle margins and apply force_style margins for SRT to prevent clipping.
+
+### 2026-01-01 14:30 UTC+7
+
+**Default captions off**
+
+- Frontend: disable captions by default in output settings.
+
+### 2025-12-31 19:23 UTC+7
+
+**Caption failure status**
+
+- Frontend: surface caption-related errors as a separate status message.
+
+### 2025-12-31 19:21 UTC+7
+
+**Caption styling**
+
+- Frontend: send font size + highlight color to backend caption renderer.
+- Backend: apply font size and highlight color to ASS captions (karaoke/word_highlight).
+
+### 2025-12-31 19:15 UTC+7
+
+**Speech-to-text captions**
+
+- Frontend: add caption source + language + subtitle upload controls for speech-to-text selection.
+- Backend: integrate whisper.cpp transcription for per-segment subtitles.
+- Docs: mark speech-to-text caption source as complete in `PLAN.md`.
+
+### 2025-12-31 19:00 UTC+7
+
+**Caption processing**
+
+- Frontend: add caption source + language + subtitle upload controls and include caption content in payload.
+- Backend: fetch YouTube captions or use uploaded subtitles, trim per segment, and burn subtitles into clips.
+- Backend: generate karaoke/word_highlight as ASS with simple per-word timing.
+
+### 2025-12-31 18:21 UTC+7
+
+**Default URL update**
+
+- Frontend: update the default YouTube URL in the clip form.
+
+### 2025-12-31 18:16 UTC+7
+
+**Caption settings wiring**
+
+- Frontend: include captions toggle + caption style in output settings payload.
+- Backend: accept caption settings in clip and batch requests.
+- Docs: mark caption wiring complete in `PLAN.md`.
+
 ### 2025-12-31 18:08 UTC+7
 
 **Aspect ratio fit mode**

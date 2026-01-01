@@ -3,11 +3,27 @@ import {
   outputSettings as settings,
   outputSettingAspectModes as aspectModes,
   outputSettingCaptionStyles as captionStyles,
+  outputSettingCaptionSources as captionSources,
   outputSettingCropMethods as cropMethods,
   outputSettingLanguages as languages,
   outputSettingAspectRatios as aspectRatios,
   outputSettingPresets as presets,
 } from '../stores/outputSettings.js';
+
+async function handleCaptionUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    settings.captionText = '';
+    settings.captionFileName = '';
+    settings.captionFormat = 'srt';
+    return;
+  }
+  const name = file.name || '';
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  settings.captionFileName = name;
+  settings.captionFormat = ext === 'vtt' ? 'vtt' : 'srt';
+  settings.captionText = await file.text();
+}
 </script>
 
 <template>
@@ -66,7 +82,7 @@ import {
       <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Enhancements</p>
       <div class="mt-3 space-y-3 text-sm text-slate-200">
         <label class="flex items-center gap-2">
-          <input type="checkbox" checked disabled class="h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-400" />
+          <input v-model="settings.autoSceneDetection" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
           Auto scene detection
         </label>
         <label class="flex items-center gap-2">
@@ -81,6 +97,34 @@ import {
           <select v-model="settings.captionStyle" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
             <option v-for="style in captionStyles" :key="style" :value="style">{{ style }}</option>
           </select>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <span>Caption source</span>
+          <select v-model="settings.captionSource" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
+            <option v-for="source in captionSources" :key="source.value" :value="source.value">{{ source.label }}</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <span>Caption language</span>
+          <select v-model="settings.captionLanguage" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
+            <option v-for="lang in languages" :key="lang" :value="lang">{{ lang }}</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <span>Subtitle file</span>
+          <label
+            class="cursor-pointer rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200 transition hover:border-slate-700"
+            :class="settings.captionSource !== 'upload' ? 'cursor-not-allowed opacity-60' : ''"
+          >
+            <input
+              type="file"
+              accept=".srt,.vtt"
+              class="hidden"
+              :disabled="settings.captionSource !== 'upload'"
+              @change="handleCaptionUpload"
+            />
+            {{ settings.captionFileName || 'Upload .srt/.vtt' }}
+          </label>
         </div>
         <div class="flex items-center justify-between gap-3">
           <span>Font size</span>

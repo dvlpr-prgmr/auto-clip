@@ -42,6 +42,14 @@ type OutputSettings struct {
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 	AspectMode  string `json:"aspect_mode,omitempty"`
 	CropMethod  string `json:"crop_method,omitempty"`
+	Captions    bool   `json:"captions,omitempty"`
+	CaptionStyle string `json:"caption_style,omitempty"`
+	CaptionSource string `json:"caption_source,omitempty"`
+	CaptionLanguage string `json:"caption_language,omitempty"`
+	CaptionFormat string `json:"caption_format,omitempty"`
+	CaptionText string `json:"caption_text,omitempty"`
+	FontSize int `json:"font_size,omitempty"`
+	HighlightColor string `json:"highlight_color,omitempty"`
 }
 
 func buildVideoFilter(settings *OutputSettings) string {
@@ -100,6 +108,16 @@ func buildVideoFilter(settings *OutputSettings) string {
 		cropX,
 		cropY,
 	)
+}
+
+func joinFilters(filters ...string) string {
+	parts := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		if strings.TrimSpace(filter) != "" {
+			parts = append(parts, filter)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 type ClipResponse struct {
@@ -289,6 +307,25 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to get stream URL", http.StatusInternalServerError)
 		return
 	}
+	if err := validateSpeechConfig(req.OutputSettings); err != nil {
+		h.Logger.Error("Caption speech config failed", map[string]string{"Error": err.Error()})
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateSpeechConfig(req.OutputSettings); err != nil {
+		h.Logger.Error("Caption speech config failed", map[string]string{"Error": err.Error()})
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var captions *captionAsset
+	if req.OutputSettings != nil && req.OutputSettings.Captions {
+		captions, err = resolveCaptionAsset(req.OutputSettings, video.ID, userAgent, cookie, proxyCfg)
+		if err != nil {
+			h.Logger.Error("Caption source failed", map[string]string{"Error": err.Error()})
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	outputDir := strings.TrimSpace(os.Getenv("CLIP_OUTPUT_DIR"))
 	if outputDir == "" {
@@ -306,6 +343,17 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 	baseName := buildClipBaseName(clipID, ts, 0)
 	outputPath := filepath.Join(outputDir, baseName)
 	videoFilter := buildVideoFilter(req.OutputSettings)
+	subtitlePath, cleanupSubtitle, err := buildSegmentSubtitleFileWithSpeech(captions, req.OutputSettings, req.Start, req.End, streamURL, userAgent, cookie, proxyCfg)
+	if err != nil {
+		h.Logger.Error("Subtitle build failed", map[string]string{"Error": err.Error()})
+		http.Error(w, "Failed to build subtitles", http.StatusInternalServerError)
+		return
+	}
+	if cleanupSubtitle != nil {
+		defer cleanupSubtitle()
+	}
+	subtitleFilter := subtitleFilterForPath(subtitlePath, req.OutputSettings)
+	combinedFilter := joinFilters(videoFilter, subtitleFilter)
 
 	// 4. Render via ffmpeg
 	// -ss before -i is crucial for fast seeking.
@@ -329,8 +377,8 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 		"-i", streamURL,
 		"-t", fmt.Sprintf("%f", duration),
 	)
-	if videoFilter != "" {
-		ffmpegArgs = append(ffmpegArgs, "-vf", videoFilter)
+	if combinedFilter != "" {
+		ffmpegArgs = append(ffmpegArgs, "-vf", combinedFilter)
 	}
 	ffmpegArgs = append(ffmpegArgs,
 		"-c:v", "libx264", "-preset", "ultrafast", // Re-encode to ensure precise cuts
@@ -454,6 +502,15 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 	clipID := sanitizeVideoID(video.ID)
 	batchTimestamp := time.Now().UnixNano()
 	videoFilter := buildVideoFilter(req.OutputSettings)
+	var captions *captionAsset
+	if req.OutputSettings != nil && req.OutputSettings.Captions {
+		captions, err = resolveCaptionAsset(req.OutputSettings, video.ID, userAgent, cookie, proxyCfg)
+		if err != nil {
+			h.Logger.Error("Caption source failed", map[string]string{"Error": err.Error()})
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	ffmpegHeaders := fmt.Sprintf("User-Agent: %s\r\n", userAgent)
 	if cookie != "" {
@@ -493,6 +550,19 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 		baseName := buildClipBaseName(clipID, batchTimestamp, segmentIndex)
 		outputPath := filepath.Join(outputDir, baseName)
 
+		subtitlePath, cleanupSubtitle, err := buildSegmentSubtitleFileWithSpeech(captions, req.OutputSettings, segment.Start, segment.End, streamURL, userAgent, cookie, proxyCfg)
+		if err != nil {
+			h.Logger.Error("Subtitle build failed", map[string]string{
+				"Error":   err.Error(),
+				"Segment": fmt.Sprintf("%d", segmentIndex),
+			})
+			result.Error = "Failed to build subtitles"
+			failureCount++
+			results = append(results, result)
+			continue
+		}
+		combinedFilter := joinFilters(videoFilter, subtitleFilterForPath(subtitlePath, req.OutputSettings))
+
 		ffmpegArgs := []string{
 			"-user_agent", userAgent,
 			"-headers", ffmpegHeaders,
@@ -505,8 +575,8 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 			"-i", streamURL,
 			"-t", fmt.Sprintf("%f", duration),
 		)
-		if videoFilter != "" {
-			ffmpegArgs = append(ffmpegArgs, "-vf", videoFilter)
+		if combinedFilter != "" {
+			ffmpegArgs = append(ffmpegArgs, "-vf", combinedFilter)
 		}
 		ffmpegArgs = append(ffmpegArgs,
 			"-c:v", "libx264", "-preset", "ultrafast",
@@ -529,6 +599,9 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 
 		startRender := time.Now()
 		if err := cmdFfmpeg.Run(); err != nil {
+			if cleanupSubtitle != nil {
+				cleanupSubtitle()
+			}
 			_ = os.Remove(outputPath)
 			h.Logger.Error("Batch Clip Failed", map[string]string{
 				"Error":   err.Error(),
@@ -540,6 +613,9 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 			failureCount++
 			results = append(results, result)
 			continue
+		}
+		if cleanupSubtitle != nil {
+			cleanupSubtitle()
 		}
 
 		renderDuration := time.Since(startRender)
