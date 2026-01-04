@@ -17,6 +17,8 @@ type SceneDetectRequest struct {
 	URL         string  `json:"url"`
 	Start       float64 `json:"start"`
 	End         float64 `json:"end"`
+	Mode        string  `json:"mode,omitempty"`
+	Language    string  `json:"language,omitempty"`
 	Threshold   float64 `json:"threshold,omitempty"`
 	MinDuration float64 `json:"min_duration,omitempty"`
 	MaxDuration float64 `json:"max_duration,omitempty"`
@@ -69,6 +71,11 @@ func (h *Handler) SceneDetect(w http.ResponseWriter, r *http.Request) {
 		threshold = 0.9
 	}
 
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "classic"
+	}
+
 	video, streamURL, userAgent, cookie, proxyCfg, err := h.getVideoStream(req.URL)
 	if err != nil {
 		h.Logger.Error("Scene detect stream failed", map[string]string{"Error": err.Error()})
@@ -77,14 +84,37 @@ func (h *Handler) SceneDetect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	duration := req.End - req.Start
-	cuts, err := detectSceneCuts(streamURL, req.Start, duration, threshold, userAgent, cookie, proxyCfg)
-	if err != nil {
-		h.Logger.Error("Scene detect failed", map[string]string{"Error": err.Error()})
-		http.Error(w, "Scene detection failed", http.StatusInternalServerError)
-		return
+	var cuts []float64
+	var segments []SceneSegment
+	switch mode {
+	case "ai":
+		var aiSegments []SceneSegment
+		cuts, aiSegments, err = detectSceneCutsAI(video, streamURL, req.Start, req.End, req.Language, userAgent, cookie, proxyCfg, req.MinDuration, req.MaxDuration, req.MaxSegments)
+		if err != nil {
+			h.Logger.Error("Scene detect failed", map[string]string{"Error": err.Error()})
+			http.Error(w, "Scene detection failed", http.StatusInternalServerError)
+			return
+		}
+		if len(aiSegments) > 0 {
+			segments = finalizeSceneSegments(
+				normalizeSceneSegments(req.Start, req.End, aiSegments),
+				req.MinDuration,
+				req.MaxDuration,
+				req.MaxSegments,
+			)
+		} else {
+			segments = buildSceneSegments(req.Start, req.End, cuts, req.MinDuration, req.MaxDuration, req.MaxSegments)
+		}
+	default:
+		cuts, err = detectSceneCutsFFmpeg(streamURL, req.Start, duration, threshold, userAgent, cookie, proxyCfg)
+		if err != nil {
+			h.Logger.Error("Scene detect failed", map[string]string{"Error": err.Error()})
+			http.Error(w, "Scene detection failed", http.StatusInternalServerError)
+			return
+		}
+		segments = buildSceneSegments(req.Start, req.End, cuts, req.MinDuration, req.MaxDuration, req.MaxSegments)
 	}
 
-	segments := buildSceneSegments(req.Start, req.End, cuts, req.MinDuration, req.MaxDuration, req.MaxSegments)
 	response := SceneDetectResponse{
 		Cuts:     cuts,
 		Segments: segments,
@@ -93,6 +123,7 @@ func (h *Handler) SceneDetect(w http.ResponseWriter, r *http.Request) {
 	h.Logger.Info("Scene Detect Success", map[string]string{
 		"URL":      req.URL,
 		"VideoID":  video.ID,
+		"Mode":     mode,
 		"Segments": fmt.Sprintf("%d", len(segments)),
 	})
 
@@ -102,7 +133,7 @@ func (h *Handler) SceneDetect(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func detectSceneCuts(streamURL string, start float64, duration float64, threshold float64, userAgent string, cookie string, proxyCfg proxyConfig) ([]float64, error) {
+func detectSceneCutsFFmpeg(streamURL string, start float64, duration float64, threshold float64, userAgent string, cookie string, proxyCfg proxyConfig) ([]float64, error) {
 	ffmpegHeaders := fmt.Sprintf("User-Agent: %s\r\n", userAgent)
 	if cookie != "" {
 		ffmpegHeaders += fmt.Sprintf("Cookie: %s\r\n", cookie)
@@ -224,6 +255,52 @@ func buildSceneSegments(start float64, end float64, cuts []float64, minDuration 
 		})
 	}
 
+	return finalizeSceneSegments(segments, minDuration, maxDuration, maxSegments)
+}
+
+func normalizeSceneSegments(start float64, end float64, segments []SceneSegment) []SceneSegment {
+	if end <= start || len(segments) == 0 {
+		return nil
+	}
+	duration := end - start
+	normalized := make([]SceneSegment, 0, len(segments))
+	for _, seg := range segments {
+		segStart := seg.Start
+		segEnd := seg.End
+		if math.IsNaN(segStart) || math.IsNaN(segEnd) || segEnd <= segStart {
+			continue
+		}
+		if segStart <= duration+1 && segEnd <= duration+1 {
+			segStart = start + segStart
+			segEnd = start + segEnd
+		}
+		if segEnd <= start || segStart >= end {
+			continue
+		}
+		if segStart < start {
+			segStart = start
+		}
+		if segEnd > end {
+			segEnd = end
+		}
+		if segEnd <= segStart {
+			continue
+		}
+		normalized = append(normalized, SceneSegment{
+			Start: segStart,
+			End:   segEnd,
+		})
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		return normalized[i].Start < normalized[j].Start
+	})
+	return normalized
+}
+
+func finalizeSceneSegments(segments []SceneSegment, minDuration float64, maxDuration float64, maxSegments int) []SceneSegment {
+	if len(segments) == 0 {
+		return nil
+	}
 	segments = splitLongSegments(segments, maxDuration)
 	segments = mergeShortSegments(segments, minDuration)
 	segments = applyThumbnailTimes(segments)

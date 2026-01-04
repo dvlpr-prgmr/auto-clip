@@ -1,17 +1,19 @@
 package api
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kkdai/youtube/v2"
 )
 
 type subtitleCue struct {
@@ -24,7 +26,7 @@ type captionAsset struct {
 	Cues []subtitleCue
 }
 
-func resolveCaptionAsset(settings *OutputSettings, videoID string, userAgent string, cookie string, proxyCfg proxyConfig) (*captionAsset, error) {
+func resolveCaptionAsset(settings *OutputSettings, video *youtube.Video, userAgent string, cookie string, proxyCfg proxyConfig) (*captionAsset, error) {
 	if settings == nil || !settings.Captions {
 		return nil, nil
 	}
@@ -32,7 +34,7 @@ func resolveCaptionAsset(settings *OutputSettings, videoID string, userAgent str
 	source := strings.ToLower(strings.TrimSpace(settings.CaptionSource))
 	switch source {
 	case "", "youtube":
-		cues, err := fetchYouTubeCaptions(videoID, settings.CaptionLanguage, userAgent, cookie, proxyCfg)
+		cues, err := fetchYouTubeCaptions(video, settings.CaptionLanguage, userAgent, cookie, proxyCfg)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +94,7 @@ func buildSegmentSubtitleFileWithSpeech(asset *captionAsset, settings *OutputSet
 	}
 	source := strings.ToLower(strings.TrimSpace(settings.CaptionSource))
 	if source != "speech" {
-	return buildSegmentSubtitleFile(asset, settings, segmentStart, segmentEnd)
+		return buildSegmentSubtitleFile(asset, settings, segmentStart, segmentEnd)
 	}
 
 	cues, err := transcribeSegmentSpeech(settings, streamURL, segmentStart, segmentEnd, userAgent, cookie, proxyCfg)
@@ -181,23 +183,79 @@ func transcribeSegmentSpeech(settings *OutputSettings, streamURL string, segment
 	return parseSRT(string(content))
 }
 
-func fetchYouTubeCaptions(videoID string, language string, userAgent string, cookie string, proxyCfg proxyConfig) ([]subtitleCue, error) {
+func fetchYouTubeCaptions(video *youtube.Video, language string, userAgent string, cookie string, proxyCfg proxyConfig) ([]subtitleCue, error) {
+	if video == nil {
+		return nil, errors.New("video is nil")
+	}
+
 	lang := strings.TrimSpace(language)
 	if lang == "" || strings.EqualFold(lang, "auto") {
 		lang = "en"
 	}
 
-	client := &http.Client{
+	// Select best track
+	var selectedTrack *youtube.CaptionTrack
+
+	// Priority 1: Exact match
+	for i := range video.CaptionTracks {
+		if video.CaptionTracks[i].LanguageCode == lang {
+			selectedTrack = &video.CaptionTracks[i]
+			break
+		}
+	}
+
+	// Priority 2: English if requested (and exact not found)
+	if selectedTrack == nil && strings.HasPrefix(lang, "en") {
+		for i := range video.CaptionTracks {
+			if strings.HasPrefix(video.CaptionTracks[i].LanguageCode, "en") {
+				selectedTrack = &video.CaptionTracks[i]
+				break
+			}
+		}
+	}
+
+	// Priority 3: Any 'asr' (auto-generated) for the language
+	if selectedTrack == nil {
+		for i := range video.CaptionTracks {
+			if video.CaptionTracks[i].LanguageCode == lang && video.CaptionTracks[i].Kind == "asr" {
+				selectedTrack = &video.CaptionTracks[i]
+				break
+			}
+		}
+	}
+
+	// Priority 4: First available track if we are desperate (better than nothing for AI detection)
+	if selectedTrack == nil && len(video.CaptionTracks) > 0 {
+		selectedTrack = &video.CaptionTracks[0]
+	}
+
+	if selectedTrack == nil {
+		fmt.Printf("[DEBUG] No captions for '%s'. Available tracks: %d\n", lang, len(video.CaptionTracks))
+		for i, t := range video.CaptionTracks {
+			fmt.Printf("  [%d] Lang=%s Kind=%s\n", i, t.LanguageCode, t.Kind)
+		}
+		return nil, fmt.Errorf("no captions found for language '%s'", lang)
+	}
+
+	captionURL := selectedTrack.BaseURL
+	// Try to force SRT first, it's easier to parse and less verbose
+	// Note: Usually base URL allows appending parameters.
+	srtURL := captionURL
+	if !strings.Contains(srtURL, "fmt=") {
+		srtURL += "&fmt=srt"
+	}
+
+	httpClient := &http.Client{
 		Transport: headerRoundTripper{
 			base: proxyCfg.baseTransport,
 			headers: http.Header{
 				"User-Agent": []string{userAgent},
 			},
 		},
-		Timeout: 15 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 	if cookie != "" {
-		client.Transport = headerRoundTripper{
+		httpClient.Transport = headerRoundTripper{
 			base: proxyCfg.baseTransport,
 			headers: http.Header{
 				"User-Agent": []string{userAgent},
@@ -206,51 +264,144 @@ func fetchYouTubeCaptions(videoID string, language string, userAgent string, coo
 		}
 	}
 
-	srt, err := fetchTimedTextSRT(client, videoID, lang, false)
-	if err == nil {
-		return parseSRT(srt)
-	}
-	srtAuto, autoErr := fetchTimedTextSRT(client, videoID, lang, true)
-	if autoErr != nil {
-		return nil, fmt.Errorf("youtube captions unavailable: %v / %v", err, autoErr)
-	}
-	return parseSRT(srtAuto)
-}
-
-func fetchTimedTextSRT(client *http.Client, videoID string, lang string, auto bool) (string, error) {
-	if videoID == "" {
-		return "", errors.New("missing video id")
-	}
-
-	params := url.Values{}
-	params.Set("v", videoID)
-	params.Set("lang", lang)
-	params.Set("fmt", "srt")
-	if auto {
-		params.Set("kind", "asr")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, "https://www.youtube.com/api/timedtext?"+params.Encode(), nil)
+	req, err := http.NewRequest(http.MethodGet, srtURL, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	resp, err := client.Do(req)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("timedtext status %d", resp.StatusCode)
+		return nil, fmt.Errorf("caption fetch status %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(resp.Body)
+
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	text := strings.TrimSpace(string(body))
-	if text == "" {
-		return "", errors.New("timedtext response is empty")
+
+	content := string(data)
+	if strings.TrimSpace(content) == "" {
+		return nil, errors.New("empty caption content")
 	}
-	return text, nil
+
+	// Check if we got XML despite asking for SRT (it happens)
+	if strings.HasPrefix(strings.TrimSpace(content), "<") {
+		return parseXMLTranscript(content)
+	}
+
+	return parseSRT(content)
+}
+
+func parseXMLTranscript(content string) ([]subtitleCue, error) {
+	type S struct {
+		Text string `xml:",chardata"`
+	}
+	type P struct {
+		Start    string `xml:"t,attr"`
+		Dur      string `xml:"d,attr"`
+		Segments []S    `xml:"s"`
+		Content  string `xml:",chardata"`
+	}
+	type TimedText struct {
+		Body struct {
+			Paragraphs []P `xml:"p"`
+		} `xml:"body"`
+	}
+
+	// Try parsing as TimedText first (format 3)
+	var tt TimedText
+	if err := xml.Unmarshal([]byte(content), &tt); err == nil && len(tt.Body.Paragraphs) > 0 {
+		var cues []subtitleCue
+		for _, item := range tt.Body.Paragraphs {
+			var textBuilder strings.Builder
+			if len(item.Segments) > 0 {
+				for _, seg := range item.Segments {
+					textBuilder.WriteString(seg.Text)
+				}
+			} else {
+				textBuilder.WriteString(item.Content)
+			}
+			
+			text := strings.TrimSpace(textBuilder.String())
+			// Basic HTML entity decoding
+			text = strings.ReplaceAll(text, "&#39;", "'")
+			text = strings.ReplaceAll(text, "&quot;", "\"")
+			text = strings.ReplaceAll(text, "&amp;", "&")
+
+			if text == "" {
+				continue
+			}
+
+			startMs, _ := strconv.ParseFloat(item.Start, 64)
+			durMs, _ := strconv.ParseFloat(item.Dur, 64)
+
+			// YouTube 't' and 'd' are in milliseconds
+			start := time.Duration(startMs) * time.Millisecond
+			end := start + time.Duration(durMs)*time.Millisecond
+
+			cues = append(cues, subtitleCue{
+				Start: start,
+				End:   end,
+				Text:  text,
+			})
+		}
+		if len(cues) > 0 {
+			return cues, nil
+		}
+	}
+
+	// Fallback to old Transcript format (just in case)
+	type TextTag struct {
+		Start string `xml:"start,attr"`
+		Dur   string `xml:"dur,attr"`
+		Text  string `xml:",chardata"`
+	}
+	type Transcript struct {
+		Texts []TextTag `xml:"text"`
+	}
+
+	var t Transcript
+	if err := xml.Unmarshal([]byte(content), &t); err != nil {
+		return nil, err
+	}
+
+	var cues []subtitleCue
+	for _, item := range t.Texts {
+		text := strings.TrimSpace(item.Text)
+		text = strings.ReplaceAll(text, "&#39;", "'")
+		text = strings.ReplaceAll(text, "&quot;", "\"")
+		text = strings.ReplaceAll(text, "&amp;", "&")
+
+		if text == "" {
+			continue
+		}
+
+		startSeconds, _ := strconv.ParseFloat(item.Start, 64)
+		durSeconds, _ := strconv.ParseFloat(item.Dur, 64)
+
+		start := time.Duration(startSeconds * float64(time.Second))
+		end := start + time.Duration(durSeconds * float64(time.Second))
+
+		cues = append(cues, subtitleCue{
+			Start: start,
+			End:   end,
+			Text:  text,
+		})
+	}
+
+	if len(cues) == 0 {
+		// Log content for debugging only if we really failed both
+		// fmt.Printf("DEBUG XML Content: %s\n", content) 
+		return nil, errors.New("no valid subtitles found in XML")
+	}
+
+	return cues, nil
 }
 
 func convertVTTToSRT(raw string) string {
@@ -460,7 +611,7 @@ func buildASSForSegment(cues []subtitleCue, segmentStart time.Duration, segmentE
 		fontSize = 56
 	}
 	secondary := assColorFromHex(highlightHex)
-	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,&H00FFFFFF,%s,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,0,2,80,80,80,1\n\n", fontSize, secondary))
+	b.WriteString(fmt.Sprintf("Style: Default,Arial,%d,%s,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,3,0,2,80,80,80,1\n\n", fontSize, secondary))
 	b.WriteString("[Events]\n")
 	b.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 

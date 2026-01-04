@@ -28,7 +28,7 @@
 - [ ] Output settings: background music toggle placeholder (no backend yet).
 - [ ] Output settings: output/thumbnail folder input wiring.
 - [ ] Output settings: validation + helper messages.
-- [ ] Auto scene detection
+- [x] Auto scene detection (Gemini transcript mode).
 
 ## Phase 3: Reliability + Ops
 - [x] Proxy/cookie handling and redacted logging.

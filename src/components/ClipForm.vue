@@ -14,7 +14,7 @@ const apiBase = computed(() => {
 });
 
 const form = reactive({
-  url: 'https://www.youtube.com/watch?v=ghjVUm0xL9Q',
+  url: 'https://www.youtube.com/watch?v=YRcHWQFrvWg',
   start: 0,
   end: 30,
 });
@@ -46,6 +46,8 @@ const sceneStatus = reactive({
   state: 'idle',
   message: '',
 });
+const showSegmentPreview = ref(false);
+const previewSegment = ref(null);
 const preview = reactive({
   title: '',
   durationLabel: '',
@@ -156,6 +158,7 @@ const sceneSensitivityLabel = computed(() => {
   if (value <= 0.6) return 'Medium';
   return 'High';
 });
+const sceneModeLabel = computed(() => (outputSettings.sceneDetectionMode === 'ai' ? 'Gemini' : 'standard'));
 
 function formatTime(value) {
   const seconds = Number(value);
@@ -497,7 +500,7 @@ async function detectScenes() {
   }
 
   sceneStatus.state = 'loading';
-  sceneStatus.message = 'Detecting scenes...';
+  sceneStatus.message = `Detecting scenes (${sceneModeLabel.value})...`;
 
   try {
     const payload = {
@@ -508,6 +511,8 @@ async function detectScenes() {
       min_duration: Number(autoSplit.sceneMinDuration) || 0,
       max_duration: Number(autoSplit.sceneMaxDuration) || 0,
       max_segments: Number(autoSplit.sceneMaxSegments) || 0,
+      mode: outputSettings.sceneDetectionMode,
+      language: outputSettings.captionLanguage,
     };
     const response = await fetch(`${apiBase.value}/api/scenes`, {
       method: 'POST',
@@ -651,6 +656,22 @@ function clearAllSegments() {
   selectedSegmentId.value = '';
   editingSegmentId.value = '';
   cancelInlineEdit();
+}
+
+const segmentPreviewUrl = computed(() => {
+  if (!previewSegment.value) return '';
+  return resolveMediaUrl(previewSegment.value.outputPath || '');
+});
+
+function openSegmentPreview(segment) {
+  if (!segment || !segment.outputPath) return;
+  previewSegment.value = segment;
+  showSegmentPreview.value = true;
+}
+
+function closeSegmentPreview() {
+  showSegmentPreview.value = false;
+  previewSegment.value = null;
 }
 
 let previewTimer = null;
@@ -1239,6 +1260,15 @@ async function handleSubmit() {
               <div class="absolute -right-3 -top-3 flex items-center gap-2 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
                 <button
                   type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!segment.outputPath"
+                  @click.stop="openSegmentPreview(segment)"
+                  aria-label="Preview segment"
+                >
+                  ▶
+                </button>
+                <button
+                  type="button"
                   class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200"
                   @click.stop="startInlineEdit(segment)"
                   aria-label="Edit segment"
@@ -1345,6 +1375,37 @@ async function handleSubmit() {
       <p v-else-if="result.thumbnailError" class="mt-1 text-amber-300">
         Thumbnail failed: {{ result.thumbnailError }}
       </p>
+    </div>
+
+    <div
+      v-if="showSegmentPreview"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur"
+      @click.self="closeSegmentPreview"
+    >
+      <div class="w-full max-w-3xl rounded-2xl border border-slate-800 bg-[#0f1724] p-6 shadow-2xl shadow-black/40 animate-fade-rise">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Segment Preview</p>
+            <h3 class="text-lg font-semibold text-slate-100">
+              {{ previewSegment ? `Segment ${String(previewSegment.index).padStart(2, '0')}` : 'Segment' }}
+            </h3>
+          </div>
+          <button type="button" class="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs text-slate-300" @click="closeSegmentPreview">
+            Close
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <video
+            v-if="segmentPreviewUrl"
+            :src="segmentPreviewUrl"
+            controls
+            playsinline
+            class="w-full rounded-xl border border-slate-800 bg-slate-950"
+          ></video>
+          <p v-else class="text-xs text-slate-400">Preview not available for this segment yet.</p>
+        </div>
+      </div>
     </div>
 
     <div

@@ -1,5 +1,62 @@
 # Changelog
 
+### 2026-01-02 08:11 UTC+7
+
+**AI multimodal audio sampling**
+
+- Backend: include a short audio snippet alongside keyframes in Gemini multimodal analysis.
+- Backend: add audio sample struct to autoscene models.
+
+### 2026-01-02 08:06 UTC+7
+
+**AI auto-split multimodal fallback**
+
+- Backend: switch to Gemini multimodal (keyframe sampling) when transcripts are unavailable.
+- Backend: add frame sampling helpers and multimodal analysis method in `autoscene`.
+
+### 2026-01-01 20:32 UTC+7
+
+**Autoscene client build fixes**
+
+- Backend: align `autoscene` Gemini client with genai v1.40.0 field names and types.
+- Backend: add `google.golang.org/genai` module dependency.
+
+### 2026-01-01 20:24 UTC+7
+
+**Autoscene Gemini client**
+
+- Backend: route AI auto-split through `api/autoscene` Gemini client and parse MM:SS clip timecodes.
+- Backend: add AI prompt options (max clips, duration hints, language) in autoscene client.
+
+### 2026-01-01 19:35 UTC+7
+
+**Fix YouTube caption parsing**
+
+- Backend: handle `<timedtext>` root element in XML captions (format 3).
+- Backend: parse nested `<s>` tags within paragraphs to correctly extract text.
+
+### 2026-01-01 16:02 UTC+7
+
+**Gemini auto-split AI**
+
+- Backend: call Gemini API to propose viral segments from YouTube captions, with JSON parsing and constraints.
+- Backend: add transcript prompt builder and helpers for AI scene detection.
+- Frontend: send caption language with scene detection requests.
+
+### 2026-01-01 15:12 UTC+7
+
+**AI scene detection hook**
+
+- Backend: allow `/api/scenes` to run AI scene detection via external command (`SCENE_AI_PATH`, `SCENE_AI_ARGS`).
+- Backend: normalize AI segments and reuse the existing min/max/thumbnail logic.
+- Frontend: add scene detection mode selector (standard vs AI) and pass mode to the scenes request.
+
+### 2026-01-01 15:02 UTC+7
+
+**Segment preview modal**
+
+- Frontend: add per-segment play button and modal video preview for rendered clips.
+
 ### 2026-01-01 14:54 UTC+7
 
 **Scene detection controls**

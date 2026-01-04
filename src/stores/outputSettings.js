@@ -18,6 +18,10 @@ export const outputSettingAspectModes = [
   { value: 'crop', label: 'Crop to ratio' },
   { value: 'fit', label: 'Fit with black bars' },
 ];
+export const outputSettingSceneModes = [
+  { value: 'classic', label: 'Standard (ffmpeg)' },
+  { value: 'ai', label: 'AI (Gemini)' },
+];
 
 export const outputSettings = reactive({
   preset: outputSettingPresets[0],
@@ -33,6 +37,7 @@ export const outputSettings = reactive({
   captionText: '',
   captionFileName: '',
   autoSceneDetection: false,
+  sceneDetectionMode: outputSettingSceneModes[0].value,
   fontSize: 56,
   highlight: '#F2C14E',
   language: outputSettingLanguages[0],

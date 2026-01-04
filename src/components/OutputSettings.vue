@@ -8,6 +8,7 @@ import {
   outputSettingLanguages as languages,
   outputSettingAspectRatios as aspectRatios,
   outputSettingPresets as presets,
+  outputSettingSceneModes as sceneModes,
 } from '../stores/outputSettings.js';
 
 async function handleCaptionUpload(event) {
@@ -85,6 +86,12 @@ async function handleCaptionUpload(event) {
           <input v-model="settings.autoSceneDetection" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
           Auto scene detection
         </label>
+        <div v-if="settings.autoSceneDetection" class="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs text-slate-200">
+          <span>Scene detection</span>
+          <select v-model="settings.sceneDetectionMode" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
+            <option v-for="mode in sceneModes" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
+          </select>
+        </div>
         <label class="flex items-center gap-2">
           <input v-model="settings.captions" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
           Word-by-word captions

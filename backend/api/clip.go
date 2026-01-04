@@ -319,7 +319,7 @@ func (h *Handler) Clip(w http.ResponseWriter, r *http.Request) {
 	}
 	var captions *captionAsset
 	if req.OutputSettings != nil && req.OutputSettings.Captions {
-		captions, err = resolveCaptionAsset(req.OutputSettings, video.ID, userAgent, cookie, proxyCfg)
+		captions, err = resolveCaptionAsset(req.OutputSettings, video, userAgent, cookie, proxyCfg)
 		if err != nil {
 			h.Logger.Error("Caption source failed", map[string]string{"Error": err.Error()})
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -504,7 +504,7 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 	videoFilter := buildVideoFilter(req.OutputSettings)
 	var captions *captionAsset
 	if req.OutputSettings != nil && req.OutputSettings.Captions {
-		captions, err = resolveCaptionAsset(req.OutputSettings, video.ID, userAgent, cookie, proxyCfg)
+		captions, err = resolveCaptionAsset(req.OutputSettings, video, userAgent, cookie, proxyCfg)
 		if err != nil {
 			h.Logger.Error("Caption source failed", map[string]string{"Error": err.Error()})
 			http.Error(w, err.Error(), http.StatusBadRequest)
