@@ -1,5 +1,40 @@
 # Changelog
 
+### 2026-01-05 08:08 UTC+7
+
+**Social upload API scaffold**
+
+- Backend: add `/api/social/upload` endpoint with platform routing and dry-run support.
+- Backend: add upload placeholders for YouTube Shorts, TikTok, and Instagram Reels.
+
+### 2026-01-05 08:01 UTC+7
+
+**Remove Netlify references**
+
+- Frontend: drop Netlify-specific entrypoints, scripts, and keywords from `package.json`.
+
+### 2026-01-04 15:50 UTC+7
+
+**AI segment hashtags**
+
+- Backend: add AI hashtags to scene segments and pass them through batch clip requests.
+- Backend: update Gemini prompts to generate multiple hashtags per clip.
+- Frontend: show hashtags on segment cards and include them in batch payloads.
+
+### 2026-01-04 15:45 UTC+7
+
+**Segment title clamping**
+
+- Frontend: clamp AI segment titles to a single line using a local utility class.
+
+### 2026-01-04 15:36 UTC+7
+
+**AI segment titles**
+
+- Backend: include AI-generated titles in scene segments and pass titles through batch clip requests.
+- Backend: update Gemini prompts to output Indonesian clickbait-neutral titles.
+- Frontend: display segment titles and include them in batch payloads.
+
 ### 2026-01-02 08:11 UTC+7
 
 **AI multimodal audio sampling**

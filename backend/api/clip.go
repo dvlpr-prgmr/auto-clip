@@ -27,6 +27,8 @@ type ClipRequest struct {
 type ClipSegmentRequest struct {
 	Start       float64  `json:"start"`
 	End         float64  `json:"end"`
+	Title       string   `json:"title,omitempty"`
+	Hashtags    []string `json:"hashtags,omitempty"`
 	ThumbnailAt *float64 `json:"thumbnail_at,omitempty"`
 }
 
@@ -37,19 +39,19 @@ type BatchClipRequest struct {
 }
 
 type OutputSettings struct {
-	Preset      string `json:"preset,omitempty"`
-	Vertical    bool   `json:"vertical,omitempty"`
-	AspectRatio string `json:"aspect_ratio,omitempty"`
-	AspectMode  string `json:"aspect_mode,omitempty"`
-	CropMethod  string `json:"crop_method,omitempty"`
-	Captions    bool   `json:"captions,omitempty"`
-	CaptionStyle string `json:"caption_style,omitempty"`
-	CaptionSource string `json:"caption_source,omitempty"`
+	Preset          string `json:"preset,omitempty"`
+	Vertical        bool   `json:"vertical,omitempty"`
+	AspectRatio     string `json:"aspect_ratio,omitempty"`
+	AspectMode      string `json:"aspect_mode,omitempty"`
+	CropMethod      string `json:"crop_method,omitempty"`
+	Captions        bool   `json:"captions,omitempty"`
+	CaptionStyle    string `json:"caption_style,omitempty"`
+	CaptionSource   string `json:"caption_source,omitempty"`
 	CaptionLanguage string `json:"caption_language,omitempty"`
-	CaptionFormat string `json:"caption_format,omitempty"`
-	CaptionText string `json:"caption_text,omitempty"`
-	FontSize int `json:"font_size,omitempty"`
-	HighlightColor string `json:"highlight_color,omitempty"`
+	CaptionFormat   string `json:"caption_format,omitempty"`
+	CaptionText     string `json:"caption_text,omitempty"`
+	FontSize        int    `json:"font_size,omitempty"`
+	HighlightColor  string `json:"highlight_color,omitempty"`
 }
 
 func buildVideoFilter(settings *OutputSettings) string {
@@ -128,22 +130,24 @@ type ClipResponse struct {
 }
 
 type ClipSegmentResponse struct {
-	Index          int     `json:"index"`
-	Start          float64 `json:"start"`
-	End            float64 `json:"end"`
-	OutputPath     string  `json:"output_path,omitempty"`
-	ThumbnailPath  string  `json:"thumbnail_path,omitempty"`
-	ThumbnailError string  `json:"thumbnail_error,omitempty"`
-	RenderDuration string  `json:"render_duration,omitempty"`
-	ThumbnailAt    float64 `json:"thumbnail_at,omitempty"`
-	Error          string  `json:"error,omitempty"`
+	Index          int      `json:"index"`
+	Start          float64  `json:"start"`
+	End            float64  `json:"end"`
+	Title          string   `json:"title,omitempty"`
+	Hashtags       []string `json:"hashtags,omitempty"`
+	OutputPath     string   `json:"output_path,omitempty"`
+	ThumbnailPath  string   `json:"thumbnail_path,omitempty"`
+	ThumbnailError string   `json:"thumbnail_error,omitempty"`
+	RenderDuration string   `json:"render_duration,omitempty"`
+	ThumbnailAt    float64  `json:"thumbnail_at,omitempty"`
+	Error          string   `json:"error,omitempty"`
 }
 
 type BatchClipResponse struct {
 	Results []ClipSegmentResponse `json:"results"`
-	Total   int                  `json:"total"`
-	Success int                  `json:"success"`
-	Failed  int                  `json:"failed"`
+	Total   int                   `json:"total"`
+	Success int                   `json:"success"`
+	Failed  int                   `json:"failed"`
 }
 
 type Handler struct {
@@ -524,9 +528,11 @@ func (h *Handler) ClipBatch(w http.ResponseWriter, r *http.Request) {
 	for idx, segment := range req.Segments {
 		segmentIndex := idx + 1
 		result := ClipSegmentResponse{
-			Index: segmentIndex,
-			Start: segment.Start,
-			End:   segment.End,
+			Index:    segmentIndex,
+			Start:    segment.Start,
+			End:      segment.End,
+			Title:    segment.Title,
+			Hashtags: segment.Hashtags,
 		}
 
 		if segment.Start < 0 {

@@ -157,8 +157,10 @@ func clipsToSceneSegments(clips []autoscene.Clip) []SceneSegment {
 			continue
 		}
 		segments = append(segments, SceneSegment{
-			Start: startSec,
-			End:   endSec,
+			Start:    startSec,
+			End:      endSec,
+			Title:    strings.TrimSpace(clip.Title),
+			Hashtags: normalizeHashtags(clip.Hashtags),
 		})
 	}
 	sort.Slice(segments, func(i, j int) bool {
@@ -191,6 +193,30 @@ func parseTimecodeSeconds(value string) (float64, error) {
 		multiplier *= 60
 	}
 	return seconds, nil
+}
+
+func normalizeHashtags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	cleaned := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		value := strings.TrimSpace(tag)
+		if value == "" {
+			continue
+		}
+		if !strings.HasPrefix(value, "#") {
+			value = "#" + value
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
 }
 
 func sampleFrames(streamURL string, start float64, end float64, userAgent string, cookie string, proxyCfg proxyConfig) ([]autoscene.FrameSample, error) {

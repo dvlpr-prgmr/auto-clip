@@ -26,13 +26,15 @@ type SceneDetectRequest struct {
 }
 
 type SceneSegment struct {
-	Start       float64 `json:"start"`
-	End         float64 `json:"end"`
-	ThumbnailAt float64 `json:"thumbnail_at,omitempty"`
+	Start       float64  `json:"start"`
+	End         float64  `json:"end"`
+	Title       string   `json:"title,omitempty"`
+	Hashtags    []string `json:"hashtags,omitempty"`
+	ThumbnailAt float64  `json:"thumbnail_at,omitempty"`
 }
 
 type SceneDetectResponse struct {
-	Cuts     []float64     `json:"cuts"`
+	Cuts     []float64      `json:"cuts"`
 	Segments []SceneSegment `json:"segments"`
 }
 
@@ -287,8 +289,10 @@ func normalizeSceneSegments(start float64, end float64, segments []SceneSegment)
 			continue
 		}
 		normalized = append(normalized, SceneSegment{
-			Start: segStart,
-			End:   segEnd,
+			Start:    segStart,
+			End:      segEnd,
+			Title:    seg.Title,
+			Hashtags: seg.Hashtags,
 		})
 	}
 	sort.Slice(normalized, func(i, j int) bool {
@@ -333,8 +337,10 @@ func splitLongSegments(segments []SceneSegment, maxDuration float64) []SceneSegm
 				continue
 			}
 			split = append(split, SceneSegment{
-				Start: start,
-				End:   end,
+				Start:    start,
+				End:      end,
+				Title:    seg.Title,
+				Hashtags: seg.Hashtags,
 			})
 		}
 	}
@@ -347,6 +353,8 @@ func mergeShortSegments(segments []SceneSegment, minDuration float64) []SceneSeg
 	}
 	if segments[0].End-segments[0].Start < minDuration && len(segments) > 1 {
 		segments[1].Start = segments[0].Start
+		segments[1].Title = mergeTitle(segments[0].Title, segments[1].Title)
+		segments[1].Hashtags = mergeHashtags(segments[0].Hashtags, segments[1].Hashtags)
 		segments = segments[1:]
 	}
 	merged := make([]SceneSegment, 0, len(segments))
@@ -358,9 +366,39 @@ func mergeShortSegments(segments []SceneSegment, minDuration float64) []SceneSeg
 		duration := seg.End - seg.Start
 		if duration < minDuration {
 			merged[len(merged)-1].End = seg.End
+			merged[len(merged)-1].Title = mergeTitle(merged[len(merged)-1].Title, seg.Title)
+			merged[len(merged)-1].Hashtags = mergeHashtags(merged[len(merged)-1].Hashtags, seg.Hashtags)
 			continue
 		}
 		merged = append(merged, seg)
+	}
+	return merged
+}
+
+func mergeTitle(base string, incoming string) string {
+	if strings.TrimSpace(base) != "" {
+		return base
+	}
+	return strings.TrimSpace(incoming)
+}
+
+func mergeHashtags(a []string, b []string) []string {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	merged := make([]string, 0, len(a)+len(b))
+	for _, tag := range append(a, b...) {
+		clean := strings.TrimSpace(tag)
+		if clean == "" {
+			continue
+		}
+		key := strings.ToLower(clean)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, clean)
 	}
 	return merged
 }

@@ -63,10 +63,10 @@ func (c *Client) AnalyzeWithOptions(ctx context.Context, transcript string, opti
 	if options.MaxDurationSecs > 0 {
 		maxHint = fmt.Sprintf("%.1fs", options.MaxDurationSecs)
 	}
-	langHint := strings.TrimSpace(options.LanguageHint)
-	if langHint == "" || strings.EqualFold(langHint, "auto") {
-		langHint = "match the transcript language"
-	}
+	langHint := normalizeLanguageHint(options.LanguageHint)
+	titleStyle := "clickbait tapi netral, tanpa emoji, tanpa ALL CAPS"
+	titleLength := "6-10 kata, maksimal 70 karakter"
+	hashtagGuide := "2-5 hashtag relevan, lowercase, tanpa spasi, gunakan underscore bila perlu"
 
 	promptText := fmt.Sprintf(`You are an expert Video Editor AI.
 Analyze the following video transcript and identify the best scenes suitable for viral short clips (Shorts/Reels/TikTok).
@@ -80,19 +80,24 @@ INSTRUCTIONS:
 - Clip duration: min %s, max %s.
 - Use timecodes relative to transcript start (00:00), format "MM:SS".
 - Write reasons in %s.
+- Title style: %s.
+- Title length: %s.
+- Hashtags: %s.
 - Return strictly a JSON object matching this schema:
 {
   "clips": [
     {
       "rank": 1,
       "category": "Emotional/Funny",
+      "title": "Judul singkat yang bikin klik",
+      "hashtags": ["#viral", "#kisahnyata"],
       "start_time": "MM:SS",
       "end_time": "MM:SS",
       "reason": "Brief explanation",
       "virality_score": 85
     }
   ]
-}`, transcript, maxClips, minHint, maxHint, langHint)
+}`, transcript, maxClips, minHint, maxHint, langHint, titleStyle, titleLength, hashtagGuide)
 
 	// 2. Konfigurasi Request
 	// Di library baru ini, Config dipisah agar lebih rapi.
@@ -122,10 +127,10 @@ func (c *Client) AnalyzeMultimodalWithOptions(ctx context.Context, frames []Fram
 	if options.MaxDurationSecs > 0 {
 		maxHint = fmt.Sprintf("%.1fs", options.MaxDurationSecs)
 	}
-	langHint := strings.TrimSpace(options.LanguageHint)
-	if langHint == "" || strings.EqualFold(langHint, "auto") {
-		langHint = "match the transcript language"
-	}
+	langHint := normalizeLanguageHint(options.LanguageHint)
+	titleStyle := "clickbait tapi netral, tanpa emoji, tanpa ALL CAPS"
+	titleLength := "6-10 kata, maksimal 70 karakter"
+	hashtagGuide := "2-5 hashtag relevan, lowercase, tanpa spasi, gunakan underscore bila perlu"
 
 	promptText := fmt.Sprintf(`You are an expert Video Editor AI.
 You will receive keyframes sampled across a video range (time starts at 00:00).
@@ -138,19 +143,24 @@ INSTRUCTIONS:
 - Clip duration: min %s, max %s.
 - Use timecodes relative to 00:00, format "MM:SS".
 - Write reasons in %s.
+- Title style: %s.
+- Title length: %s.
+- Hashtags: %s.
 - Return strictly a JSON object matching this schema:
 {
   "clips": [
     {
       "rank": 1,
       "category": "Emotional/Funny",
+      "title": "Judul singkat yang bikin klik",
+      "hashtags": ["#viral", "#kisahnyata"],
       "start_time": "MM:SS",
       "end_time": "MM:SS",
       "reason": "Brief explanation",
       "virality_score": 85
     }
   ]
-}`, maxClips, minHint, maxHint, langHint)
+}`, maxClips, minHint, maxHint, langHint, titleStyle, titleLength, hashtagGuide)
 
 	parts := make([]*genai.Part, 0, 1+len(frames)*2+len(audio)*2)
 	parts = append(parts, genai.NewPartFromText(promptText))
@@ -242,4 +252,21 @@ func resolveModel() string {
 		model = "gemini-1.5-flash"
 	}
 	return model
+}
+
+func normalizeLanguageHint(lang string) string {
+	trimmed := strings.TrimSpace(lang)
+	if trimmed == "" || strings.EqualFold(trimmed, "auto") {
+		return "match the transcript language"
+	}
+	switch strings.ToLower(trimmed) {
+	case "id", "id-id", "indonesia", "bahasa indonesia":
+		return "Bahasa Indonesia"
+	case "en", "en-us", "english":
+		return "English"
+	case "jp", "ja", "japanese":
+		return "Japanese"
+	default:
+		return trimmed
+	}
 }

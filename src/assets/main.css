@@ -35,4 +35,11 @@
   .animate-fade-rise-delay {
     animation: fade-rise 0.7s 0.12s ease-out both;
   }
+
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
 }

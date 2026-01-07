@@ -52,6 +52,7 @@ func main() {
 	mux.HandleFunc("/api/scenes", clipHandler.SceneDetect)
 	mux.HandleFunc("/api/thumbnail/batch", clipHandler.ThumbnailBatch)
 	mux.HandleFunc("/api/preview", clipHandler.Preview)
+	mux.HandleFunc("/api/social/upload", clipHandler.SocialUpload)
 	mux.HandleFunc("/proxy-check", clipHandler.ProxyCheck)
 	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(resolveMediaRoot()))))
 

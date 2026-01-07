@@ -411,7 +411,7 @@ function getRange() {
   return end > start ? { start, end } : { start, end: start };
 }
 
-function createSegment(start, end, index, thumbnailAt) {
+function createSegment(start, end, index, thumbnailAt, title, hashtags) {
   const duration = Math.max(end - start, 0);
   return {
     id: `${index}-${start}-${end}`,
@@ -419,6 +419,8 @@ function createSegment(start, end, index, thumbnailAt) {
     start,
     end,
     duration,
+    title: title || '',
+    hashtags: Array.isArray(hashtags) ? [...hashtags] : [],
     thumbnailUrl: preview.thumbnailUrl || '',
     thumbnailAt: resolveThumbnailAt(duration, thumbnailAt),
     outputPath: '',
@@ -543,7 +545,7 @@ async function detectScenes() {
     autoSplitApplied.value = true;
     segments.value = reindexSegments(
       segmentsPayload.map((segment, index) =>
-        createSegment(segment.start, segment.end, index + 1, segment.thumbnail_at),
+        createSegment(segment.start, segment.end, index + 1, segment.thumbnail_at, segment.title, segment.hashtags),
       ),
     );
 
@@ -822,6 +824,8 @@ function buildSegmentPayload(segment) {
   return {
     start,
     end,
+    title: segment.title || '',
+    hashtags: Array.isArray(segment.hashtags) ? segment.hashtags : [],
     thumbnail_at: resolveThumbnailAt(duration, segment.thumbnailAt),
   };
 }
@@ -1200,7 +1204,15 @@ async function handleSubmit() {
                   </div>
                 </div>
                 <div>
-                  <p class="text-sm font-semibold text-slate-100">Segment {{ String(segment.index).padStart(2, '0') }}</p>
+                  <p class="text-sm font-semibold text-slate-100 line-clamp-1">
+                    {{ segment.title || `Segment ${String(segment.index).padStart(2, '0')}` }}
+                  </p>
+                  <p v-if="segment.title" class="text-[11px] text-slate-400">
+                    Segment {{ String(segment.index).padStart(2, '0') }}
+                  </p>
+                  <p v-if="segment.hashtags && segment.hashtags.length" class="text-[11px] text-slate-400 line-clamp-1">
+                    {{ segment.hashtags.join(' ') }}
+                  </p>
                   <p class="text-xs text-slate-400">
                     {{ formatTime(segment.start) }} - {{ formatTime(segment.end) }} (length {{ formatTime(segment.duration) }})
                   </p>
