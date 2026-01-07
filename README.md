@@ -68,6 +68,18 @@ Basic health check endpoint that returns `{ "status": "ok" }`.
 - The default setup uses the `ffmpeg-static` binary packaged with the function. To use a system-level ffmpeg instead, remove `ffmpeg-static` from `package.json` and ensure `ffmpeg` is available on the `PATH` during the build.
 - Function invocations must stay within the Netlify function timeout and size limits.
 
+## Environment
+
+Create a `.env.local` in the project root for local development. Useful variables:
+
+```
+VITE_API_BASE=http://localhost:8888     # Point the UI to a different backend host.
+YOUTUBE_COOKIE="VISITOR_INFO1_LIVE=..." # Optional: cookie to access age/region-restricted videos.
+HTTP_PROXY=http://proxy.example.com:80  # Optional: if you must reach YouTube via a proxy.
+```
+
+The backend also accepts an `X-Youtube-Cookie` header; if set, it overrides `YOUTUBE_COOKIE` for that request.
+
 ## Frontend (Vue 3 + Vite + Tailwind)
 
 The UI lives directly in the root (`index.html`, `src/`, and Vite/Tailwind configs).

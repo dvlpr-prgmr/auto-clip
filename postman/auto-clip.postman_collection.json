@@ -1,0 +1,84 @@
+{
+  "info": {
+    "_postman_id": "4b3f7e7e-3a6b-4fd4-aad4-8081207f4e5d",
+    "name": "auto-clip Go API",
+    "description": "Local Go backend for generating MP4 clips from YouTube. Point {{base_url}} at your running server (default http://localhost:8888).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Clip",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\",\n  \"start\": 5,\n  \"end\": 12\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/clip",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "clip"
+          ]
+        },
+        "description": "Streams the clipped MP4 back. Ensure ffmpeg is installed and YouTube access is allowed (optionally configure YOUTUBE_COOKIE or YOUTUBE_PROXY env vars)."
+      },
+      "response": []
+    },
+    {
+      "name": "Proxy Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/proxy-check",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "proxy-check"
+          ]
+        },
+        "description": "Verifies proxy access to YouTube + Google Video using current backend proxy settings."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8888"
+    }
+  ]
+}
