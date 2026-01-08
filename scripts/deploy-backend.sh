@@ -7,5 +7,11 @@ export PATH=/usr/local/go/bin:$PATH
 cd /home/dvlpr_prgmr/projects/auto-clip/backend
 /usr/local/go/bin/go build -o autoclip-server .
 
-sudo systemctl restart auto-clip
-sudo systemctl status auto-clip --no-pager
+SYSTEMCTL_BIN="$(command -v systemctl)"
+if [[ -z "$SYSTEMCTL_BIN" ]]; then
+  echo "systemctl not found in PATH"
+  exit 1
+fi
+
+sudo -n "$SYSTEMCTL_BIN" restart auto-clip
+sudo -n "$SYSTEMCTL_BIN" status auto-clip --no-pager
