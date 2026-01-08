@@ -1,5 +1,12 @@
 # Changelog
 
+### 2026-01-08 10:05 UTC+7
+
+**Backend auto-deploy workflow**
+
+- CI: add GitHub Actions workflow to SSH deploy backend on `main`.
+- Ops: add `scripts/deploy-backend.sh` for pull/build/restart via systemd.
+
 ### 2026-01-07 16:55 UTC+7
 
 **Social upload UI triggers**
