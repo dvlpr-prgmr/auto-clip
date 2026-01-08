@@ -1,5 +1,39 @@
 # Changelog
 
+### 2026-01-07 16:55 UTC+7
+
+**Social upload UI triggers**
+
+- Frontend: add per-segment upload button and status messages.
+- Frontend: add social upload settings (auto upload, platform, visibility).
+- Frontend: auto-upload rendered segments when enabled.
+
+### 2026-01-07 16:42 UTC+7
+
+**Scene detection logging**
+
+- Backend: log scene detection requests with mode, range, and thresholds.
+
+### 2026-01-07 16:38 UTC+7
+
+**Social upload config tweaks**
+
+- Config: add `YOUTUBE_CATEGORY_ID` placeholder for YouTube uploads.
+- Backend: mark social upload success as completed rather than queued.
+
+### 2026-01-07 16:37 UTC+7
+
+**YouTube upload implementation**
+
+- Backend: implement OAuth refresh + resumable upload for YouTube Shorts.
+- Backend: build metadata (title/description/hashtags/tags) and return uploaded video ID.
+
+### 2026-01-07 16:28 UTC+7
+
+**Social upload env placeholders**
+
+- Config: add social upload credential placeholders to `.env.local`.
+
 ### 2026-01-05 08:08 UTC+7
 
 **Social upload API scaffold**

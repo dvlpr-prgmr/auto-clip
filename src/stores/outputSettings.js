@@ -18,6 +18,16 @@ export const outputSettingAspectModes = [
   { value: 'crop', label: 'Crop to ratio' },
   { value: 'fit', label: 'Fit with black bars' },
 ];
+export const socialUploadPlatforms = [
+  { value: 'youtube', label: 'YouTube Shorts' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'instagram', label: 'Instagram Reels' },
+];
+export const socialUploadVisibilities = [
+  { value: 'public', label: 'Public' },
+  { value: 'unlisted', label: 'Unlisted' },
+  { value: 'private', label: 'Private' },
+];
 export const outputSettingSceneModes = [
   { value: 'classic', label: 'Standard (ffmpeg)' },
   { value: 'ai', label: 'AI (Gemini)' },
@@ -44,4 +54,7 @@ export const outputSettings = reactive({
   backgroundMusic: false,
   outputFolder: '/output/clips',
   thumbnailFolder: '/output/thumbnails',
+  socialUploadEnabled: false,
+  socialUploadPlatform: socialUploadPlatforms[0].value,
+  socialUploadVisibility: socialUploadVisibilities[0].value,
 });

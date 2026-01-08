@@ -9,6 +9,8 @@ import {
   outputSettingAspectRatios as aspectRatios,
   outputSettingPresets as presets,
   outputSettingSceneModes as sceneModes,
+  socialUploadPlatforms,
+  socialUploadVisibilities,
 } from '../stores/outputSettings.js';
 
 async function handleCaptionUpload(event) {
@@ -156,6 +158,29 @@ async function handleCaptionUpload(event) {
         <input v-model="settings.backgroundMusic" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
         Background music (coming soon)
       </label>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-[#121c2a]/80 p-4 text-xs text-slate-300">
+      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Social Upload</p>
+      <div class="mt-3 space-y-3">
+        <label class="flex items-center gap-2 text-sm text-slate-200">
+          <input v-model="settings.socialUploadEnabled" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-400" />
+          Auto upload after render
+        </label>
+        <div class="flex items-center justify-between gap-3">
+          <span>Platform</span>
+          <select v-model="settings.socialUploadPlatform" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
+            <option v-for="platform in socialUploadPlatforms" :key="platform.value" :value="platform.value">{{ platform.label }}</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <span>Visibility</span>
+          <select v-model="settings.socialUploadVisibility" class="rounded-lg border border-slate-800 bg-[#0c141f] px-2 py-1 text-xs text-slate-200">
+            <option v-for="visibility in socialUploadVisibilities" :key="visibility.value" :value="visibility.value">{{ visibility.label }}</option>
+          </select>
+        </div>
+        <p class="text-[11px] text-slate-500">Requires configured API credentials on the server.</p>
+      </div>
     </div>
 
     <div class="rounded-xl border border-slate-800 bg-[#121c2a]/80 p-4 text-xs text-slate-300">

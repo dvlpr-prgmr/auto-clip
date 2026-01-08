@@ -78,6 +78,17 @@ func (h *Handler) SceneDetect(w http.ResponseWriter, r *http.Request) {
 		mode = "classic"
 	}
 
+	h.Logger.Info("Scene Detect Request", map[string]string{
+		"URL":         req.URL,
+		"Mode":        mode,
+		"Start":       fmt.Sprintf("%.2f", req.Start),
+		"End":         fmt.Sprintf("%.2f", req.End),
+		"Threshold":   fmt.Sprintf("%.2f", threshold),
+		"MinDuration": fmt.Sprintf("%.2f", req.MinDuration),
+		"MaxDuration": fmt.Sprintf("%.2f", req.MaxDuration),
+		"MaxSegments": fmt.Sprintf("%d", req.MaxSegments),
+	})
+
 	video, streamURL, userAgent, cookie, proxyCfg, err := h.getVideoStream(req.URL)
 	if err != nil {
 		h.Logger.Error("Scene detect stream failed", map[string]string{"Error": err.Error()})

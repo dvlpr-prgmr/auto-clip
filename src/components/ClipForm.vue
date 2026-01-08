@@ -46,6 +46,10 @@ const sceneStatus = reactive({
   state: 'idle',
   message: '',
 });
+const uploadStatus = reactive({
+  state: 'idle',
+  message: '',
+});
 const showSegmentPreview = ref(false);
 const previewSegment = ref(null);
 const preview = reactive({
@@ -211,6 +215,103 @@ function resetThumbnailStatusSoon() {
       thumbnailStatus.message = '';
     }
   }, 1600);
+}
+
+function buildUploadPayload(segment) {
+  const platform = outputSettings.socialUploadPlatform;
+  const title = segment.title || `Segment ${String(segment.index).padStart(2, '0')}`;
+  return {
+    platform,
+    video_path: segment.outputPath,
+    title,
+    description: '',
+    hashtags: Array.isArray(segment.hashtags) ? segment.hashtags : [],
+    visibility: outputSettings.socialUploadVisibility,
+  };
+}
+
+async function uploadSegment(segment, { silent = false } = {}) {
+  if (!segment || !segment.outputPath) return;
+  if (!outputSettings.socialUploadPlatform) return;
+  if (segment.uploadState === 'uploading') return;
+
+  segment.uploadState = 'uploading';
+  segment.uploadMessage = 'Uploading...';
+  segment.uploadId = '';
+  if (!silent) {
+    uploadStatus.state = 'loading';
+    uploadStatus.message = `Uploading ${segment.title || `Segment ${String(segment.index).padStart(2, '0')}`}...`;
+  }
+
+  try {
+    const payload = buildUploadPayload(segment);
+    const response = await fetch(`${apiBase.value}/api/social/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let detail = 'Upload failed.';
+      try {
+        detail = await response.text();
+      } catch (e) {
+        // ignore
+      }
+      throw new Error(detail || 'Upload failed.');
+    }
+
+    const resultPayload = await response.json();
+    segment.uploadState = 'success';
+    segment.uploadId = resultPayload.request_id || '';
+    segment.uploadMessage = resultPayload.request_id ? `Uploaded (${resultPayload.request_id})` : 'Uploaded';
+
+    if (!silent) {
+      uploadStatus.state = 'success';
+      uploadStatus.message = 'Upload completed.';
+    }
+  } catch (error) {
+    segment.uploadState = 'error';
+    segment.uploadMessage = error.message || 'Upload failed.';
+    if (!silent) {
+      uploadStatus.state = 'error';
+      uploadStatus.message = error.message || 'Upload failed.';
+    }
+  }
+}
+
+async function autoUploadRenderedSegments() {
+  if (!outputSettings.socialUploadEnabled) return;
+  if (!segments.value.length) return;
+
+  uploadStatus.state = 'loading';
+  uploadStatus.message = `Auto uploading to ${outputSettings.socialUploadPlatform}...`;
+
+  let uploadedCount = 0;
+  let failedCount = 0;
+  for (const segment of segments.value) {
+    if (!segment.outputPath || segment.renderError) {
+      continue;
+    }
+    if (segment.uploadState === 'success') {
+      continue;
+    }
+    await uploadSegment(segment, { silent: true });
+    if (segment.uploadState === 'success') {
+      uploadedCount += 1;
+    } else if (segment.uploadState === 'error') {
+      failedCount += 1;
+    }
+  }
+
+  if (uploadedCount === 0 && failedCount === 0) {
+    uploadStatus.state = 'idle';
+    uploadStatus.message = '';
+    return;
+  }
+
+  uploadStatus.state = failedCount > 0 ? 'error' : 'success';
+  uploadStatus.message = `Auto upload done: ${uploadedCount} uploaded, ${failedCount} failed.`;
 }
 
 async function refreshSegmentThumbnails() {
@@ -421,6 +522,9 @@ function createSegment(start, end, index, thumbnailAt, title, hashtags) {
     duration,
     title: title || '',
     hashtags: Array.isArray(hashtags) ? [...hashtags] : [],
+    uploadState: 'idle',
+    uploadMessage: '',
+    uploadId: '',
     thumbnailUrl: preview.thumbnailUrl || '',
     thumbnailAt: resolveThumbnailAt(duration, thumbnailAt),
     outputPath: '',
@@ -438,6 +542,9 @@ function reindexSegments(items) {
     duration: Math.max(segment.end - segment.start, 0),
     thumbnailUrl: segment.thumbnailUrl || preview.thumbnailUrl || '',
     thumbnailAt: resolveThumbnailAt(Math.max(segment.end - segment.start, 0), segment.thumbnailAt),
+    uploadState: segment.uploadState || 'idle',
+    uploadMessage: segment.uploadMessage || '',
+    uploadId: segment.uploadId || '',
   }));
 }
 
@@ -814,6 +921,9 @@ function clearSegmentRenderData() {
     thumbnailError: '',
     renderDuration: '',
     renderError: '',
+    uploadState: 'idle',
+    uploadMessage: '',
+    uploadId: '',
   }));
 }
 
@@ -859,6 +969,8 @@ async function handleSubmit() {
   batchSummary.failed = 0;
   captionStatus.state = 'idle';
   captionStatus.message = '';
+  uploadStatus.state = 'idle';
+  uploadStatus.message = '';
   clearSegmentRenderData();
   isSubmitting.value = true;
 
@@ -922,6 +1034,7 @@ async function handleSubmit() {
 
       status.type = batchSummary.failed > 0 ? 'error' : 'success';
       status.message = `Batch done: ${batchSummary.success} succeeded, ${batchSummary.failed} failed.`;
+      await autoUploadRenderedSegments();
     } else {
       const payload = {
         url: payloadUrl,
@@ -958,6 +1071,15 @@ async function handleSubmit() {
 
       status.type = 'success';
       status.message = 'Clip saved on the server.';
+      if (outputSettings.socialUploadEnabled && result.outputPath) {
+        const title = preview.title || 'Segment 01';
+        await uploadSegment({
+          index: 1,
+          title,
+          outputPath: result.outputPath,
+          hashtags: [],
+        }, { silent: false });
+      }
     }
   } catch (error) {
     status.type = 'error';
@@ -1213,6 +1335,9 @@ async function handleSubmit() {
                   <p v-if="segment.hashtags && segment.hashtags.length" class="text-[11px] text-slate-400 line-clamp-1">
                     {{ segment.hashtags.join(' ') }}
                   </p>
+                  <p v-if="segment.uploadMessage" class="text-[10px] text-slate-400">
+                    Upload: {{ segment.uploadMessage }}
+                  </p>
                   <p class="text-xs text-slate-400">
                     {{ formatTime(segment.start) }} - {{ formatTime(segment.end) }} (length {{ formatTime(segment.duration) }})
                   </p>
@@ -1278,6 +1403,15 @@ async function handleSubmit() {
                   aria-label="Preview segment"
                 >
                   ▶
+                </button>
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!segment.outputPath || segment.uploadState === 'uploading'"
+                  @click.stop="uploadSegment(segment)"
+                  aria-label="Upload segment"
+                >
+                  ⤴
                 </button>
                 <button
                   type="button"
@@ -1364,6 +1498,16 @@ async function handleSubmit() {
       <span v-else-if="status.type === 'error'" aria-hidden="true">⚠️</span>
       <span v-else aria-hidden="true">ℹ️</span>
       <span>{{ status.message }}</span>
+    </div>
+
+    <div v-if="uploadStatus.message" class="flex items-center gap-3 rounded-lg border p-3 text-xs" :class="{
+      'border-emerald-500/60 bg-emerald-500/10 text-emerald-100': uploadStatus.state === 'success',
+      'border-rose-500/60 bg-rose-500/10 text-rose-100': uploadStatus.state === 'error',
+      'border-sky-500/60 bg-sky-500/10 text-sky-100': uploadStatus.state === 'loading',
+      'border-slate-800 bg-slate-900 text-slate-200': uploadStatus.state === 'idle',
+    }">
+      <span aria-hidden="true">🚀</span>
+      <span>{{ uploadStatus.message }}</span>
     </div>
 
     <div
