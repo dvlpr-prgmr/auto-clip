@@ -7,6 +7,12 @@
 - CI: add GitHub Actions workflow to SSH deploy backend on `main`.
 - Ops: add `scripts/deploy-backend.sh` for pull/build/restart via systemd.
 
+### 2026-01-08 10:24 UTC+7
+
+**Deploy script sudo fix**
+
+- Ops: use `sudo -n` and resolved systemctl path to avoid interactive prompts.
+
 ### 2026-01-07 16:55 UTC+7
 
 **Social upload UI triggers**
