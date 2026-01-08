@@ -13,6 +13,12 @@
 
 - Ops: use `sudo -n` and resolved systemctl path to avoid interactive prompts.
 
+### 2026-01-08 10:32 UTC+7
+
+**Deploy script sudoers alignment**
+
+- Ops: drop `--no-pager` in systemctl status to match sudoers rule.
+
 ### 2026-01-07 16:55 UTC+7
 
 **Social upload UI triggers**
