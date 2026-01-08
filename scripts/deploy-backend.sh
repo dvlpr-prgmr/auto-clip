@@ -14,4 +14,4 @@ if [[ -z "$SYSTEMCTL_BIN" ]]; then
 fi
 
 sudo -n "$SYSTEMCTL_BIN" restart auto-clip
-sudo -n "$SYSTEMCTL_BIN" status auto-clip --no-pager
+sudo -n "$SYSTEMCTL_BIN" status auto-clip
